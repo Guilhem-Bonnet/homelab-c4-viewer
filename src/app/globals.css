@@ -29,6 +29,24 @@ body {
   color: #e2e8f0;
 }
 
+.c4-node-dimmed {
+  opacity: 0.28;
+  filter: grayscale(0.65);
+}
+
+.c4-node-match {
+  border-color: rgba(56, 189, 248, 0.7);
+  box-shadow: 0 0 0 1px rgba(56, 189, 248, 0.28), 0 24px 80px rgba(14, 165, 233, 0.2);
+}
+
+.c4-node-impact {
+  border-color: rgba(16, 185, 129, 0.65);
+}
+
+.c4-node-selected {
+  box-shadow: 0 0 0 2px rgba(125, 211, 252, 0.4), 0 28px 90px rgba(14, 165, 233, 0.28);
+}
+
 .c4-edge {
   stroke: #38bdf8;
 }
@@ -37,4 +55,9 @@ body {
   stroke: #64748b;
   stroke-dasharray: 6 6;
   opacity: 0.7;
+}
+
+.c4-edge-impact {
+  stroke: #34d399;
+  stroke-width: 2.5;
 }

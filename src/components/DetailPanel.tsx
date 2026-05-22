@@ -51,7 +51,26 @@ export function RelationshipDetail({ relationship }: { relationship: C4Relations
         <div><dt className="text-slate-500">Technology</dt><dd className="text-slate-200">{relationship.technology ?? "n/a"}</dd></div>
         <div><dt className="text-slate-500">Protocol</dt><dd className="text-slate-200">{relationship.protocol ?? "n/a"}</dd></div>
         <div><dt className="text-slate-500">Port</dt><dd className="text-slate-200">{relationship.port ?? "n/a"}</dd></div>
+        <div><dt className="text-slate-500">Tags</dt><dd className="text-slate-200">{relationship.tags.join(", ") || "n/a"}</dd></div>
       </dl>
+      <section className="mt-6">
+        <h3 className="text-sm font-semibold text-slate-200">Documentation</h3>
+        <div className="mt-3 space-y-2">
+          {relationship.documentation.length === 0 ? (
+            <p className="rounded-xl border border-dashed border-slate-700 p-3 text-sm text-slate-500">No relationship documentation linked yet.</p>
+          ) : (
+            relationship.documentation.map((doc) => (
+              <div key={doc.id} className="rounded-xl border border-white/10 bg-white/[0.03] p-3">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-sm text-slate-200">{doc.title}</span>
+                  <ProvenanceBadge sourceKind={doc.sourceKind} reviewed={doc.reviewed} />
+                </div>
+                {doc.path ? <p className="mt-1 text-xs text-slate-500">{doc.path}</p> : null}
+              </div>
+            ))
+          )}
+        </div>
+      </section>
     </aside>
   );
 }

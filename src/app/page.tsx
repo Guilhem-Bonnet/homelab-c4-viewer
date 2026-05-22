@@ -2,19 +2,18 @@
 
 import { AppShell } from "@/components/AppShell";
 import { ViewCard } from "@/components/ViewCard";
-import { loadC4Model } from "@/lib/structurizr-api";
+import { loadC4ModelWithStatus, type C4ModelLoadResult } from "@/lib/structurizr-api";
 import { LifecycleBadge } from "@/components/LifecycleBadge";
 import { useEffect, useState } from "react";
-import type { NormalizedC4Model } from "@/types/c4";
 
 export default function HomePage() {
-  const [model, setModel] = useState<NormalizedC4Model | null>(null);
+  const [loadResult, setLoadResult] = useState<C4ModelLoadResult | null>(null);
 
   useEffect(() => {
-    loadC4Model().then(setModel);
+    loadC4ModelWithStatus().then(setLoadResult);
   }, []);
 
-  if (!model) {
+  if (!loadResult) {
     return (
       <AppShell>
         <section className="mx-auto max-w-7xl px-6 py-16 text-slate-400">Loading C4 workspace...</section>
@@ -22,6 +21,7 @@ export default function HomePage() {
     );
   }
 
+  const { model } = loadResult;
   const live = model.versions.find((version) => version.lifecycle === "live") ?? model.versions[0];
 
   return (
@@ -31,6 +31,9 @@ export default function HomePage() {
           <div className="mb-5 flex items-center gap-3">
             {live ? <LifecycleBadge lifecycle={live.lifecycle} /> : null}
             <span className="text-sm text-slate-500">Structurizr engine · C4 registry overlay</span>
+            <span className={`rounded-full border px-2.5 py-1 text-xs ${loadResult.source === "live" ? "border-emerald-400/30 bg-emerald-400/10 text-emerald-200" : "border-amber-400/30 bg-amber-400/10 text-amber-200"}`}>
+              {loadResult.source === "live" ? "Live workspace" : "Fixture fallback"}
+            </span>
           </div>
           <h1 className="text-5xl font-semibold tracking-[-0.06em] text-slate-50 md:text-7xl">
             HomeLab C4 Architecture
@@ -39,6 +42,11 @@ export default function HomePage() {
             A product-grade architecture map built from Structurizr JSON, enriched with as-code metadata,
             version lifecycles, relationship details, and documentation provenance.
           </p>
+          {loadResult.error ? (
+            <p className="mt-4 rounded-2xl border border-amber-400/20 bg-amber-400/10 p-4 text-sm text-amber-100">
+              Live workspace unavailable from {loadResult.endpoint}; showing the public-safe fixture instead.
+            </p>
+          ) : null}
         </div>
 
         <div className="mt-10 grid gap-4 md:grid-cols-4">

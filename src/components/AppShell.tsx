@@ -15,6 +15,7 @@ export function AppShell({ children }: { children: ReactNode }) {
           </Link>
           <nav className="flex items-center gap-2 text-sm text-slate-400">
             <Link className="rounded-lg px-3 py-2 hover:bg-white/5 hover:text-slate-100" href="/docs">Docs</Link>
+            <Link className="rounded-lg px-3 py-2 hover:bg-white/5 hover:text-slate-100" href="/ops">Ops impact</Link>
             <a className="rounded-lg px-3 py-2 hover:bg-white/5 hover:text-slate-100" href="/workspace/">Structurizr</a>
           </nav>
         </div>

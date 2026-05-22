@@ -3,19 +3,18 @@
 import { useParams } from "next/navigation";
 import { AppShell } from "@/components/AppShell";
 import { GraphCanvas } from "@/components/GraphCanvas";
-import { loadC4Model } from "@/lib/structurizr-api";
+import { loadC4ModelWithStatus, type C4ModelLoadResult } from "@/lib/structurizr-api";
 import { useEffect, useState } from "react";
-import type { NormalizedC4Model } from "@/types/c4";
 
 export default function ViewPage() {
-  const [model, setModel] = useState<NormalizedC4Model | null>(null);
+  const [loadResult, setLoadResult] = useState<C4ModelLoadResult | null>(null);
   const params = useParams<{ key: string }>();
 
   useEffect(() => {
-    loadC4Model().then(setModel);
+    loadC4ModelWithStatus().then(setLoadResult);
   }, []);
 
-  if (!model) {
+  if (!loadResult) {
     return (
       <AppShell>
         <section className="mx-auto max-w-7xl px-6 py-16 text-slate-400">Loading C4 view...</section>
@@ -24,7 +23,7 @@ export default function ViewPage() {
   }
 
   const { key } = params;
-  const view = model.views.find((candidate) => candidate.key === key);
+  const view = loadResult.model.views.find((candidate) => candidate.key === key);
   if (!view) {
     return (
       <AppShell>
@@ -35,7 +34,7 @@ export default function ViewPage() {
 
   return (
     <AppShell>
-      <GraphCanvas view={view} />
+      <GraphCanvas view={view} loadSource={loadResult.source} />
     </AppShell>
   );
 }
