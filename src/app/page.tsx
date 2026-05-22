@@ -1,10 +1,27 @@
+"use client";
+
 import { AppShell } from "@/components/AppShell";
 import { ViewCard } from "@/components/ViewCard";
 import { loadC4Model } from "@/lib/structurizr-api";
 import { LifecycleBadge } from "@/components/LifecycleBadge";
+import { useEffect, useState } from "react";
+import type { NormalizedC4Model } from "@/types/c4";
 
-export default async function HomePage() {
-  const model = await loadC4Model();
+export default function HomePage() {
+  const [model, setModel] = useState<NormalizedC4Model | null>(null);
+
+  useEffect(() => {
+    loadC4Model().then(setModel);
+  }, []);
+
+  if (!model) {
+    return (
+      <AppShell>
+        <section className="mx-auto max-w-7xl px-6 py-16 text-slate-400">Loading C4 workspace...</section>
+      </AppShell>
+    );
+  }
+
   const live = model.versions.find((version) => version.lifecycle === "live") ?? model.versions[0];
 
   return (
