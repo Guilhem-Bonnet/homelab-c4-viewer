@@ -8,6 +8,10 @@ export type StructurizrElement = {
   relationships?: StructurizrRelationship[];
 };
 
+export type StructurizrSoftwareSystem = StructurizrElement & {
+  containers?: StructurizrElement[];
+};
+
 export type StructurizrRelationship = {
   id: string;
   sourceId: string;
@@ -35,7 +39,7 @@ export type StructurizrWorkspace = {
   name?: string;
   model?: {
     people?: StructurizrElement[];
-    softwareSystems?: Array<StructurizrElement & { containers?: StructurizrElement[] }>;
+    softwareSystems?: StructurizrSoftwareSystem[];
     relationships?: StructurizrRelationship[];
   };
   views?: {

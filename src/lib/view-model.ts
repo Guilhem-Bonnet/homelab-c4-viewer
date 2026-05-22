@@ -1,5 +1,6 @@
-import { Background, type Edge, MarkerType, type Node } from "@xyflow/react";
-import { Database, Server, UserRound, Workflow } from "lucide-react";
+import dagre from "@dagrejs/dagre";
+import { Background, MarkerType, Position, type Edge, type Node } from "@xyflow/react";
+import { Bot, Cloud, Database, GitBranch, HardDrive, KeyRound, Network, Server, Shield, UserRound, Workflow } from "lucide-react";
 import type { ComponentType } from "react";
 import type { C4Element, C4Lifecycle, C4Relationship, C4View } from "@/types/c4";
 
@@ -20,27 +21,81 @@ export function iconFor(element: C4Element): ComponentType<{ className?: string 
   if (element.tags.includes("Person")) return UserRound;
   if (element.tags.includes("Database")) return Database;
   if (element.tags.includes("Queue")) return Workflow;
+  if (element.name.toLowerCase().includes("aws") || element.tags.includes("AWS")) return Cloud;
+  if (element.name.toLowerCase().includes("git") || element.name.toLowerCase().includes("flux")) return GitBranch;
+  if (element.name.toLowerCase().includes("nfs") || element.name.toLowerCase().includes("longhorn")) return HardDrive;
+  if (element.name.toLowerCase().includes("auth") || element.name.toLowerCase().includes("sso")) return KeyRound;
+  if (element.name.toLowerCase().includes("traefik") || element.name.toLowerCase().includes("dns")) return Network;
+  if (element.name.toLowerCase().includes("kyverno") || element.name.toLowerCase().includes("trivy")) return Shield;
+  if (element.name.toLowerCase().includes("ollama") || element.name.toLowerCase().includes("ai")) return Bot;
   return Server;
 }
 
-export function toFlow(view: C4View): { nodes: Node[]; edges: Edge[] } {
-  const nodes = view.elements.map((element, index) => ({
-    id: element.id,
-    type: "default",
-    position: { x: 80 + (index % 3) * 300, y: 80 + Math.floor(index / 3) * 180 },
-    data: { element },
-    className: "c4-node",
-  }));
+const NODE_WIDTH = 270;
+const NODE_HEIGHT = 148;
+const GRID_COLUMNS = 4;
 
+function layoutNodes(view: C4View, edges: Edge[]): Node[] {
+  if (view.relationships.length === 0) {
+    return view.elements.map((element, index) => ({
+      id: element.id,
+      type: "default",
+      position: { x: 80 + (index % GRID_COLUMNS) * 330, y: 90 + Math.floor(index / GRID_COLUMNS) * 210 },
+      sourcePosition: Position.Right,
+      targetPosition: Position.Left,
+      data: { element },
+      className: "c4-node",
+    }));
+  }
+
+  const graph = new dagre.graphlib.Graph();
+  graph.setDefaultEdgeLabel(() => ({}));
+  graph.setGraph({
+    rankdir: "LR",
+    nodesep: 80,
+    ranksep: view.elements.length > 40 ? 150 : 190,
+    edgesep: 36,
+    marginx: 80,
+    marginy: 120,
+  });
+
+  view.elements.forEach((element) => graph.setNode(element.id, { width: NODE_WIDTH, height: NODE_HEIGHT }));
+  edges.forEach((edge) => graph.setEdge(edge.source, edge.target));
+  dagre.layout(graph);
+
+  return view.elements.map((element) => {
+    const node = graph.node(element.id);
+    return {
+      id: element.id,
+      type: "default",
+      position: {
+        x: (node?.x ?? 0) - NODE_WIDTH / 2,
+        y: (node?.y ?? 0) - NODE_HEIGHT / 2,
+      },
+      sourcePosition: Position.Right,
+      targetPosition: Position.Left,
+      data: { element },
+      className: "c4-node",
+    };
+  });
+}
+
+export function toFlow(view: C4View): { nodes: Node[]; edges: Edge[] } {
   const edges = view.relationships.map((relationship: C4Relationship) => ({
     id: relationship.id,
     source: relationship.sourceId,
     target: relationship.targetId,
     label: relationship.protocol ?? relationship.technology ?? relationship.description,
+    type: "smoothstep",
     markerEnd: { type: MarkerType.ArrowClosed },
     className: relationship.lifecycle === "deprecated" ? "c4-edge-deprecated" : "c4-edge",
+    labelBgPadding: [8, 4] as [number, number],
+    labelBgBorderRadius: 8,
+    labelStyle: { fill: "#cbd5e1", fontWeight: 600, fontSize: 11 },
+    labelBgStyle: { fill: "rgba(2, 6, 23, 0.82)", stroke: "rgba(148, 163, 184, 0.22)" },
     data: { relationship },
   }));
+  const nodes = layoutNodes(view, edges);
 
   return { nodes, edges };
 }

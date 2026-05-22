@@ -5,7 +5,7 @@ import type {
   C4View,
   NormalizedC4Model,
 } from "@/types/c4";
-import type { StructurizrElement, StructurizrRelationship, StructurizrWorkspace } from "@/types/structurizr";
+import type { StructurizrContainerView, StructurizrElement, StructurizrRelationship, StructurizrWorkspace } from "@/types/structurizr";
 import type { C4Registry } from "./registry";
 
 function tags(value?: string): string[] {
@@ -26,12 +26,14 @@ function lifecycleFromTags(elementTags: string[], fallback: C4Lifecycle = "live"
   return fallback;
 }
 
-function collectElements(workspace: StructurizrWorkspace): StructurizrElement[] {
+type ElementWithParent = StructurizrElement & { parentId?: string };
+
+function collectElements(workspace: StructurizrWorkspace): ElementWithParent[] {
   const systems = workspace.model?.softwareSystems ?? [];
   return [
     ...(workspace.model?.people ?? []),
     ...systems,
-    ...systems.flatMap((system) => system.containers ?? []),
+    ...systems.flatMap((system) => (system.containers ?? []).map((container) => ({ ...container, parentId: system.id }))),
   ];
 }
 
@@ -42,7 +44,7 @@ function collectRelationships(elements: StructurizrElement[], workspace: Structu
   ];
 }
 
-function normalizeElement(element: StructurizrElement, registry: C4Registry): C4Element {
+function normalizeElement(element: ElementWithParent, registry: C4Registry): C4Element {
   const id = canonicalId(element);
   const elementTags = tags(element.tags);
   const overlay = registry.elements[id];
@@ -53,6 +55,7 @@ function normalizeElement(element: StructurizrElement, registry: C4Registry): C4
     type: element.type ?? "Element",
     description: element.description,
     technology: element.technology,
+    parentId: element.parentId,
     tags: elementTags,
     lifecycle: overlay?.lifecycle ?? lifecycleFromTags(elementTags),
     documentation: overlay?.documentation ?? [],
@@ -97,42 +100,57 @@ function normalizeRelationship(
 }
 
 export function normalizeWorkspace(workspace: StructurizrWorkspace, registry: C4Registry): NormalizedC4Model {
-  const elements = collectElements(workspace).map((element) => normalizeElement(element, registry));
+  const rawElements = collectElements(workspace);
+  const rawRelationships = collectRelationships(rawElements, workspace);
+  const elements = rawElements.map((element) => normalizeElement(element, registry));
   const elementById = new Map(elements.map((element) => [element.id, element]));
-  const relationships = collectRelationships(collectElements(workspace), workspace).map((relationship) =>
+  const relationships = rawRelationships.map((relationship) =>
     normalizeRelationship(relationship, registry, elementById),
   );
-  const relationshipById = new Map(relationships.map((relationship) => [relationship.id, relationship]));
-  const structurizrRelationshipById = new Map(
-    collectRelationships(collectElements(workspace), workspace).map((relationship) => [relationship.id, relationship]),
+  const normalizedRelationshipByStructurizrId = new Map(
+    rawRelationships.map((relationship, index) => [relationship.id, relationships[index]]),
   );
 
-  const containerViews: C4View[] = (workspace.views?.containerViews ?? []).map((view) => {
+  function normalizeView(
+    view: StructurizrContainerView,
+    level: C4View["level"],
+  ): C4View {
     const viewElementIds = new Set((view.elements ?? []).map((element) => element.id));
     const viewElements = elements.filter((element) => viewElementIds.has(element.id));
-    const viewRelationships = (view.relationships ?? [])
-      .map((relationshipRef) => structurizrRelationshipById.get(relationshipRef.id))
-      .filter((relationship): relationship is StructurizrRelationship => Boolean(relationship))
-      .map((relationship) => relationshipById.get(relationshipId(relationship, elementById)))
-      .filter((relationship): relationship is C4Relationship => Boolean(relationship));
+    const referencedRelationships = (view.relationships ?? [])
+      .map((relationshipRef) => normalizedRelationshipByStructurizrId.get(relationshipRef.id))
+      .filter((relationship): relationship is C4Relationship => Boolean(relationship))
+      .filter((relationship) => viewElementIds.has(relationship.sourceId) && viewElementIds.has(relationship.targetId));
+    const inferredRelationships = relationships.filter(
+      (relationship) => viewElementIds.has(relationship.sourceId) && viewElementIds.has(relationship.targetId),
+    );
+    const viewRelationships = Array.from(
+      new Map([...referencedRelationships, ...inferredRelationships].map((relationship) => [relationship.id, relationship])).values(),
+    );
 
     return {
       key: view.key,
       title: view.title ?? view.key,
       description: view.description,
-      level: "container",
+      level,
       versionId: registry.versions[0]?.id ?? "live",
       lifecycle: registry.versions[0]?.lifecycle ?? "live",
       elements: viewElements,
       relationships: viewRelationships,
     };
-  });
+  }
+
+  const views: C4View[] = [
+    ...(workspace.views?.systemLandscapeViews ?? []).map((view) => normalizeView(view, "system-landscape")),
+    ...(workspace.views?.systemContextViews ?? []).map((view) => normalizeView(view, "system-context")),
+    ...(workspace.views?.containerViews ?? []).map((view) => normalizeView(view, "container")),
+  ];
 
   return {
     title: workspace.name ?? "C4 Workspace",
     versions: registry.versions,
     activeVersionId: registry.versions[0]?.id ?? "live",
-    views: containerViews,
+    views,
     elements,
     relationships,
   };

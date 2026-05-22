@@ -21,12 +21,30 @@ body {
 }
 
 .c4-node {
-  width: 230px;
+  width: 270px;
   border: 1px solid rgba(148, 163, 184, 0.18);
-  border-radius: 18px;
-  background: rgba(6, 15, 31, 0.92);
+  border-radius: 22px;
+  background:
+    linear-gradient(145deg, rgba(15, 23, 42, 0.96), rgba(2, 6, 23, 0.94)),
+    rgba(6, 15, 31, 0.92);
   box-shadow: 0 18px 60px rgba(0, 0, 0, 0.38);
   color: #e2e8f0;
+}
+
+.c4-handle {
+  width: 12px !important;
+  height: 12px !important;
+  border: 2px solid rgba(226, 232, 240, 0.85) !important;
+  background: #38bdf8 !important;
+  opacity: 0.95;
+}
+
+.c4-handle-target {
+  left: -6px !important;
+}
+
+.c4-handle-source {
+  right: -6px !important;
 }
 
 .c4-node-dimmed {
@@ -48,16 +66,51 @@ body {
 }
 
 .c4-edge {
-  stroke: #38bdf8;
+  stroke: #38bdf8 !important;
+  stroke-width: 2.2;
+  filter: drop-shadow(0 0 6px rgba(14, 165, 233, 0.28));
 }
 
 .c4-edge-deprecated {
-  stroke: #64748b;
+  stroke: #64748b !important;
+  stroke-width: 2;
   stroke-dasharray: 6 6;
   opacity: 0.7;
 }
 
 .c4-edge-impact {
-  stroke: #34d399;
-  stroke-width: 2.5;
+  stroke: #34d399 !important;
+  stroke-width: 3.5;
+  filter: drop-shadow(0 0 8px rgba(52, 211, 153, 0.45));
+}
+
+.react-flow__edge-path,
+.react-flow__connection-path {
+  stroke-linecap: round;
+}
+
+.react-flow__edge-textbg {
+  fill: rgba(2, 6, 23, 0.84);
+}
+
+.c4-tool-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.35rem;
+  height: 2.25rem;
+  border-radius: 0.8rem;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(15, 23, 42, 0.78);
+  padding: 0 0.7rem;
+  color: #cbd5e1;
+  font-size: 0.78rem;
+  font-weight: 700;
+  transition: border-color 160ms ease, background 160ms ease, color 160ms ease;
+}
+
+.c4-tool-button:hover {
+  border-color: rgba(56, 189, 248, 0.45);
+  background: rgba(14, 165, 233, 0.14);
+  color: #e0f2fe;
 }

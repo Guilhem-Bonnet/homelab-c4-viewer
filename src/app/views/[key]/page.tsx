@@ -34,7 +34,7 @@ export default function ViewPage() {
 
   return (
     <AppShell>
-      <GraphCanvas view={view} loadSource={loadResult.source} />
+      <GraphCanvas view={view} allViews={loadResult.model.views} loadSource={loadResult.source} />
     </AppShell>
   );
 }
