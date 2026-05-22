@@ -6,12 +6,13 @@ import clsx from "clsx";
 import { Crosshair, Layers3, Maximize2, Minus, Plus, Search, Waypoints } from "lucide-react";
 import { useMemo, useState } from "react";
 import type { C4Element, C4Lifecycle, C4Relationship, C4View } from "@/types/c4";
-import { Background, iconFor, toFlow } from "@/lib/view-model";
+import { Background, NODE_HEIGHT, NODE_WIDTH, iconFor, toFlow } from "@/lib/view-model";
 import { ElementDetail, RelationshipDetail } from "./DetailPanel";
 import { LifecycleBadge } from "./LifecycleBadge";
 
 function NodeCard({ element }: { element: C4Element }) {
   const Icon = iconFor(element);
+  const boundary = element.name.includes("/") ? element.name.split("/")[0] : element.canonicalId.split(".")[0];
   return (
     <div className="relative overflow-hidden p-4">
       <Handle type="target" position={Position.Left} className="c4-handle c4-handle-target" />
@@ -27,6 +28,11 @@ function NodeCard({ element }: { element: C4Element }) {
         </div>
       </div>
       <div className="mt-4 flex flex-wrap gap-1.5">
+        {boundary ? (
+          <span className="rounded-full border border-sky-300/20 bg-sky-400/10 px-2 py-0.5 text-[11px] font-semibold uppercase tracking-[0.14em] text-sky-200">
+            {boundary}
+          </span>
+        ) : null}
         <LifecycleBadge lifecycle={element.lifecycle} />
         {element.tags.slice(0, 2).map((tag) => (
           <span key={tag} className="rounded-full bg-slate-800 px-2 py-0.5 text-[11px] text-slate-400">{tag}</span>
@@ -36,8 +42,18 @@ function NodeCard({ element }: { element: C4Element }) {
   );
 }
 
+function BoundaryCard({ data }: { data: { label: string; count: number } }) {
+  return (
+    <div className="c4-boundary-card">
+      <span>{data.label}</span>
+      <strong>{data.count}</strong>
+    </div>
+  );
+}
+
 const nodeTypes = {
   default: ({ data }: { data: { element: C4Element } }) => <NodeCard element={data.element} />,
+  boundary: BoundaryCard,
 };
 
 const levelLabels: Record<C4View["level"], string> = {
@@ -49,6 +65,10 @@ const levelLabels: Record<C4View["level"], string> = {
 };
 
 const lifecycleOptions: Array<C4Lifecycle | "all"> = ["all", "live", "normal", "test", "deprecated"];
+
+function isBoundaryNode(node: Node): node is Node<{ childIds: string[]; label: string; count: number }> {
+  return node.type === "boundary";
+}
 
 function matchesQuery(element: C4Element, query: string): boolean {
   const needle = query.trim().toLowerCase();
@@ -106,15 +126,21 @@ export function GraphCanvas({
   const visibleNodes = useMemo(
     () =>
       nodes
-        .filter((node) => visibleElementIds.has(node.id))
+        .filter((node) =>
+          isBoundaryNode(node)
+            ? node.data.childIds.some((childId) => visibleElementIds.has(childId))
+            : visibleElementIds.has(node.id),
+        )
         .map((node) => ({
           ...node,
-          className: clsx("c4-node", {
-            "c4-node-dimmed": query.trim() && !queryMatches.has(node.id),
-            "c4-node-match": query.trim() && queryMatches.has(node.id),
-            "c4-node-impact": impactElementIds.has(node.id),
-            "c4-node-selected": selectedElement?.id === node.id,
-          }),
+          className: isBoundaryNode(node)
+            ? "c4-boundary"
+            : clsx("c4-node", {
+                "c4-node-dimmed": query.trim() && !queryMatches.has(node.id),
+                "c4-node-match": query.trim() && queryMatches.has(node.id),
+                "c4-node-impact": impactElementIds.has(node.id),
+                "c4-node-selected": selectedElement?.id === node.id,
+              }),
         })),
     [impactElementIds, nodes, query, queryMatches, selectedElement?.id, visibleElementIds],
   );
@@ -156,7 +182,9 @@ export function GraphCanvas({
     setSelectedElement(element);
     const node = flow?.getNode(element.id);
     if (node) {
-      flow?.setCenter(node.position.x + 115, node.position.y + 90, { zoom: 1.18, duration: 500 });
+      const width = node.measured?.width ?? node.width ?? NODE_WIDTH;
+      const height = node.measured?.height ?? node.height ?? NODE_HEIGHT;
+      flow?.setCenter(node.position.x + width / 2, node.position.y + height / 2, { zoom: 1.18, duration: 500 });
     }
   }
 

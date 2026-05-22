@@ -31,13 +31,71 @@ export function iconFor(element: C4Element): ComponentType<{ className?: string 
   return Server;
 }
 
-const NODE_WIDTH = 270;
-const NODE_HEIGHT = 148;
+export const NODE_WIDTH = 270;
+export const NODE_HEIGHT = 148;
 const GRID_COLUMNS = 4;
+const BOUNDARY_PADDING_X = 52;
+const BOUNDARY_PADDING_TOP = 58;
+const BOUNDARY_PADDING_BOTTOM = 42;
+
+function boundaryLabel(element: C4Element): string {
+  if (element.name.includes("/")) return element.name.split("/")[0] ?? "core";
+  if (element.type.toLowerCase().includes("person")) return "people";
+  if (element.tags.includes("external")) return "external";
+  return element.canonicalId.split(".")[0] ?? "core";
+}
+
+function addBoundaryNodes(nodes: Node[], view: C4View): Node[] {
+  const elementById = new Map(view.elements.map((element) => [element.id, element]));
+  const grouped = new Map<string, Node[]>();
+
+  nodes.forEach((node) => {
+    const element = elementById.get(node.id);
+    if (!element) return;
+    const label = boundaryLabel(element);
+    grouped.set(label, [...(grouped.get(label) ?? []), node]);
+  });
+
+  const boundaryNodes = Array.from(grouped.entries())
+    .filter(([, groupNodes]) => groupNodes.length >= 2)
+    .map(([label, groupNodes]) => {
+      const minX = Math.min(...groupNodes.map((node) => node.position.x));
+      const minY = Math.min(...groupNodes.map((node) => node.position.y));
+      const maxX = Math.max(...groupNodes.map((node) => node.position.x + NODE_WIDTH));
+      const maxY = Math.max(...groupNodes.map((node) => node.position.y + NODE_HEIGHT));
+
+      return {
+        id: `boundary:${label}`,
+        type: "boundary",
+        position: {
+          x: minX - BOUNDARY_PADDING_X,
+          y: minY - BOUNDARY_PADDING_TOP,
+        },
+        data: {
+          label,
+          childIds: groupNodes.map((node) => node.id),
+          count: groupNodes.length,
+        },
+        style: {
+          width: maxX - minX + BOUNDARY_PADDING_X * 2,
+          height: maxY - minY + BOUNDARY_PADDING_TOP + BOUNDARY_PADDING_BOTTOM,
+        },
+        selectable: false,
+        draggable: false,
+        focusable: false,
+        zIndex: -1,
+      } satisfies Node;
+    });
+
+  return [
+    ...boundaryNodes,
+    ...nodes.map((node) => ({ ...node, zIndex: 1 })),
+  ];
+}
 
 function layoutNodes(view: C4View, edges: Edge[]): Node[] {
   if (view.relationships.length === 0) {
-    return view.elements.map((element, index) => ({
+    return addBoundaryNodes(view.elements.map((element, index) => ({
       id: element.id,
       type: "default",
       position: { x: 80 + (index % GRID_COLUMNS) * 330, y: 90 + Math.floor(index / GRID_COLUMNS) * 210 },
@@ -45,7 +103,7 @@ function layoutNodes(view: C4View, edges: Edge[]): Node[] {
       targetPosition: Position.Left,
       data: { element },
       className: "c4-node",
-    }));
+    })), view);
   }
 
   const graph = new dagre.graphlib.Graph();
@@ -63,7 +121,7 @@ function layoutNodes(view: C4View, edges: Edge[]): Node[] {
   edges.forEach((edge) => graph.setEdge(edge.source, edge.target));
   dagre.layout(graph);
 
-  return view.elements.map((element) => {
+  const laidOutNodes = view.elements.map((element) => {
     const node = graph.node(element.id);
     return {
       id: element.id,
@@ -78,6 +136,8 @@ function layoutNodes(view: C4View, edges: Edge[]): Node[] {
       className: "c4-node",
     };
   });
+
+  return addBoundaryNodes(laidOutNodes, view);
 }
 
 export function toFlow(view: C4View): { nodes: Node[]; edges: Edge[] } {

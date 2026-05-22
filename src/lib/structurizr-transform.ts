@@ -16,8 +16,8 @@ function tags(value?: string): string[] {
 }
 
 function canonicalId(element: StructurizrElement): string {
-  const domain = tags(element.tags).find((tag) => ["Media", "AI", "Edge", "AWS"].includes(tag))?.toLowerCase() ?? "core";
-  return `${domain}.${element.name.toLowerCase().replace(/[^a-z0-9]+/g, ".").replace(/(^\\.|\\.$)/g, "")}`;
+  const domain = tags(element.tags).find((tag) => ["media", "ai", "edge", "aws"].includes(tag.toLowerCase()))?.toLowerCase() ?? "core";
+  return `${domain}.${element.name.toLowerCase().replace(/[^a-z0-9]+/g, ".").replace(/(^\.|\.$)/g, "")}`;
 }
 
 function lifecycleFromTags(elementTags: string[], fallback: C4Lifecycle = "live"): C4Lifecycle {
@@ -72,7 +72,7 @@ function relationshipId(
   const purpose = (relationship.description ?? relationship.technology ?? "flow")
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, ".")
-    .replace(/(^\\.|\\.$)/g, "");
+    .replace(/(^\.|\.$)/g, "");
   return `${source}.to.${target}.${purpose || "flow"}`;
 }
 
