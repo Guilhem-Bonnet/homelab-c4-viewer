@@ -420,13 +420,18 @@ export function GraphCanvas({
   }
 
   function onNodeClick(_: unknown, node: Node) {
+    if (isBoundaryNode(node)) return;
+    const element = (node.data as { element?: C4Element }).element;
+    if (!element) return;
     setSelectedRelationship(null);
-    setSelectedElement((node.data as { element: C4Element }).element);
+    setSelectedElement(element);
   }
 
   function onEdgeClick(_: unknown, edge: Edge) {
+    const relationship = (edge.data as { relationship?: C4Relationship } | undefined)?.relationship;
+    if (!relationship) return;
     setSelectedElement(null);
-    setSelectedRelationship((edge.data as { relationship: C4Relationship }).relationship);
+    setSelectedRelationship(relationship);
   }
 
   function clearFocus() {
@@ -705,7 +710,8 @@ export function GraphCanvas({
               nodeStrokeWidth={3}
               nodeColor={(node) => {
                 if (isBoundaryNode(node)) return "rgba(15, 23, 42, 0.2)";
-                return zoneColor((node.data as { element: C4Element }).element);
+                const element = (node.data as { element?: C4Element }).element;
+                return element ? zoneColor(element) : "#38bdf8";
               }}
               nodeStrokeColor="rgba(186, 230, 253, 0.75)"
               maskColor="rgba(2, 6, 23, 0.58)"

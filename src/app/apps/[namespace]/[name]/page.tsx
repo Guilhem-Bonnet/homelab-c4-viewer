@@ -229,7 +229,7 @@ function ConfigMatrix({ element }: { element: C4Element }) {
             {configMap.data ? (
               <div className="mt-3 space-y-2">
                 {Object.entries(configMap.data).map(([key, value]) => (
-                  <ConfigValue key={key} name={key} value={value} />
+                  <ConfigValue key={key} name={key} value={stringifyConfigValue(value)} />
                 ))}
               </div>
             ) : null}
@@ -292,4 +292,14 @@ function ConfigValue({ name, value }: { name: string; value: string }) {
       <pre className="mt-2 max-h-56 overflow-auto whitespace-pre-wrap break-words rounded-lg bg-black/20 p-2 text-[11px] leading-5 text-slate-400">{value}</pre>
     </details>
   );
+}
+
+function stringifyConfigValue(value: unknown): string {
+  if (typeof value === "string") return value;
+  if (value == null) return "";
+  try {
+    return JSON.stringify(value, null, 2);
+  } catch {
+    return String(value);
+  }
 }

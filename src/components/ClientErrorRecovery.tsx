@@ -1,19 +1,24 @@
 "use client";
 
 import { useEffect } from "react";
+import { isRecoverableAssetError } from "./C4ErrorFallback";
 
 const reloadStorageKey = "c4-viewer:chunk-reload-at";
 
-function isRecoverableAssetError(error: unknown): boolean {
-  const message = error instanceof Error ? error.message : String(error ?? "");
-  return /ChunkLoadError|Loading chunk|dynamically imported module|Failed to fetch|_next\/static/i.test(message);
-}
-
 function reloadOnce() {
-  const lastReload = Number(window.sessionStorage.getItem(reloadStorageKey) ?? 0);
+  let lastReload = 0;
+  try {
+    lastReload = Number(window.sessionStorage.getItem(reloadStorageKey) ?? 0);
+  } catch {
+    lastReload = 0;
+  }
   const now = Date.now();
   if (now - lastReload < 30_000) return;
-  window.sessionStorage.setItem(reloadStorageKey, String(now));
+  try {
+    window.sessionStorage.setItem(reloadStorageKey, String(now));
+  } catch {
+    // Ignore storage failures; the reload remains the recovery action.
+  }
   window.location.reload();
 }
 
