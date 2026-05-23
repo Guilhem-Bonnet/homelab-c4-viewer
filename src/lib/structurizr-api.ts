@@ -1,8 +1,8 @@
 import { publicFixtureRegistry } from "./registry";
 import { publicFixtureWorkspace } from "./fixture";
 import { normalizeWorkspace } from "./structurizr-transform";
+import { parseC4Metadata, parseStructurizrWorkspace } from "./c4-validation";
 import type { C4MetadataBundle, NormalizedC4Model } from "@/types/c4";
-import type { StructurizrWorkspace } from "@/types/structurizr";
 
 const WORKSPACE_ENDPOINT = process.env.NEXT_PUBLIC_WORKSPACE_ENDPOINT ?? "/api/workspace/1";
 const METADATA_ENDPOINT = process.env.NEXT_PUBLIC_METADATA_ENDPOINT ?? "/exports/metadata/live/config.json";
@@ -18,7 +18,7 @@ export type C4ModelLoadResult = {
 async function loadMetadata(): Promise<C4MetadataBundle | undefined> {
   const response = await fetch(METADATA_ENDPOINT, { cache: "no-store" });
   if (!response.ok) return undefined;
-  return (await response.json()) as C4MetadataBundle;
+  return parseC4Metadata(await response.json());
 }
 
 export async function loadC4ModelWithStatus(): Promise<C4ModelLoadResult> {
@@ -37,7 +37,7 @@ export async function loadC4ModelWithStatus(): Promise<C4ModelLoadResult> {
       loadMetadata().catch(() => undefined),
     ]);
     if (!response.ok) throw new Error(`Workspace fetch failed: ${response.status}`);
-    const workspace = (await response.json()) as StructurizrWorkspace;
+    const workspace = parseStructurizrWorkspace(await response.json());
     return {
       model: normalizeWorkspace(workspace, publicFixtureRegistry, metadata),
       source: "live",

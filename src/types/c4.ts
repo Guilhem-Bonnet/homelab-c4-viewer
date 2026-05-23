@@ -61,7 +61,7 @@ export type C4VolumeRef = {
 export type C4ConfigMapSummary = {
   name: string;
   keys: string[];
-  data?: Record<string, string>;
+  data?: Record<string, unknown>;
   redacted: boolean;
 };
 
