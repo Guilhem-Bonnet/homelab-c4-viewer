@@ -3,6 +3,7 @@ import { Background, MarkerType, Position, type Edge, type Node } from "@xyflow/
 import { Bot, Cloud, Database, GitBranch, HardDrive, KeyRound, Network, Server, Shield, UserRound, Workflow } from "lucide-react";
 import type { ComponentType } from "react";
 import type { C4Element, C4Lifecycle, C4Relationship, C4View } from "@/types/c4";
+import { flowColor, flowKind } from "./visual-style";
 
 export function lifecycleClass(lifecycle: C4Lifecycle): string {
   switch (lifecycle) {
@@ -110,9 +111,9 @@ function layoutNodes(view: C4View, edges: Edge[]): Node[] {
   graph.setDefaultEdgeLabel(() => ({}));
   graph.setGraph({
     rankdir: "LR",
-    nodesep: 80,
-    ranksep: view.elements.length > 40 ? 150 : 190,
-    edgesep: 36,
+    nodesep: view.elements.length > 40 ? 116 : 104,
+    ranksep: view.elements.length > 40 ? 210 : 250,
+    edgesep: 52,
     marginx: 80,
     marginy: 120,
   });
@@ -141,20 +142,49 @@ function layoutNodes(view: C4View, edges: Edge[]): Node[] {
 }
 
 export function toFlow(view: C4View): { nodes: Node[]; edges: Edge[] } {
-  const edges = view.relationships.map((relationship: C4Relationship) => ({
-    id: relationship.id,
-    source: relationship.sourceId,
-    target: relationship.targetId,
-    label: relationship.protocol ?? relationship.technology ?? relationship.description,
-    type: "smoothstep",
-    markerEnd: { type: MarkerType.ArrowClosed },
-    className: relationship.lifecycle === "deprecated" ? "c4-edge-deprecated" : "c4-edge",
-    labelBgPadding: [8, 4] as [number, number],
-    labelBgBorderRadius: 8,
-    labelStyle: { fill: "#dbeafe", fontWeight: 450, fontSize: 10.5, letterSpacing: 0.08 },
-    labelBgStyle: { fill: "rgba(15, 23, 42, 0.72)", stroke: "rgba(125, 211, 252, 0.18)" },
-    data: { relationship },
-  }));
+  const flowLaneOffsets = {
+    user: -46,
+    network: -30,
+    security: -18,
+    service: 0,
+    storage: 24,
+    observability: 42,
+    gitops: 58,
+    backup: 74,
+  } satisfies Record<ReturnType<typeof flowKind>, number>;
+  const relationshipGroups = new Map<string, C4Relationship[]>();
+  view.relationships.forEach((relationship) => {
+    const forward = `${relationship.sourceId}->${relationship.targetId}`;
+    const reverse = `${relationship.targetId}->${relationship.sourceId}`;
+    const key = forward < reverse ? forward : reverse;
+    relationshipGroups.set(key, [...(relationshipGroups.get(key) ?? []), relationship]);
+  });
+
+  const edges = view.relationships.map((relationship: C4Relationship) => {
+    const forward = `${relationship.sourceId}->${relationship.targetId}`;
+    const reverse = `${relationship.targetId}->${relationship.sourceId}`;
+    const key = forward < reverse ? forward : reverse;
+    const group = relationshipGroups.get(key) ?? [relationship];
+    const groupIndex = group.findIndex((candidate) => candidate.id === relationship.id);
+    const kind = flowKind(relationship);
+    const laneOffset = (groupIndex - (group.length - 1) / 2) * 34 + flowLaneOffsets[kind];
+
+    return {
+      id: relationship.id,
+      source: relationship.sourceId,
+      target: relationship.targetId,
+      label: relationship.protocol ?? relationship.technology ?? relationship.description,
+      type: "architecture",
+      markerEnd: { type: MarkerType.ArrowClosed },
+      className: relationship.lifecycle === "deprecated" ? "c4-edge-deprecated" : `c4-edge c4-edge-flow-${kind}`,
+      style: { stroke: flowColor(kind) },
+      labelBgPadding: [8, 4] as [number, number],
+      labelBgBorderRadius: 8,
+      labelStyle: { fill: "#dbeafe", fontWeight: 450, fontSize: 10.5, letterSpacing: 0.08 },
+      labelBgStyle: { fill: "rgba(15, 23, 42, 0.72)", stroke: "rgba(125, 211, 252, 0.18)" },
+      data: { relationship, laneOffset, flowKind: kind },
+    };
+  });
   const nodes = layoutNodes(view, edges);
 
   return { nodes, edges };

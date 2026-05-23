@@ -3,13 +3,14 @@
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
-import type { ReactNode } from "react";
+import type { CSSProperties, ReactNode } from "react";
 import { AppShell } from "@/components/AppShell";
 import { LifecycleBadge } from "@/components/LifecycleBadge";
 import { ProvenanceBadge } from "@/components/ProvenanceBadge";
 import { simpleIconPath } from "@/lib/app-icons";
 import { loadC4ModelWithStatus, type C4ModelLoadResult } from "@/lib/structurizr-api";
-import type { C4Element } from "@/types/c4";
+import { flowColor, flowKind, healthLabel, healthState, nodeRole, zoneColor } from "@/lib/visual-style";
+import type { C4Element, C4Relationship } from "@/types/c4";
 
 export default function AppInternalsPage() {
   const params = useParams<{ namespace: string; name: string }>();
@@ -30,6 +31,10 @@ export default function AppInternalsPage() {
         (relationship) => relationship.sourceId === element?.id || relationship.targetId === element?.id,
       ) ?? [],
     [element?.id, loadResult?.model.relationships],
+  );
+  const elementById = useMemo(
+    () => new Map(loadResult?.model.elements.map((candidate) => [candidate.id, candidate]) ?? []),
+    [loadResult?.model.elements],
   );
 
   if (!loadResult) {
@@ -60,26 +65,16 @@ export default function AppInternalsPage() {
             <div className="grid gap-3 md:grid-cols-2">
               <Meta label="Kind" value={element.app.kind} />
               <Meta label="Replicas" value={String(element.app.replicas ?? "n/a")} />
+              <Meta label="Health" value={`${healthLabel(healthState(element))} · ${element.app.health?.readyReplicas ?? "?"}/${element.app.health?.desiredReplicas ?? "?"} ready`} />
               <Meta label="ServiceAccount" value={element.app.serviceAccount ?? "n/a"} />
               <Meta label="Services" value={element.app.services.map((service) => `${service.name}:${service.type}`).join(", ") || "n/a"} />
             </div>
           </Card>
-          <Card title="Relationship impact">
-            <div className="space-y-2">
-              {relationships.length === 0 ? (
-                <p className="text-sm text-slate-500">No direct relationship exported.</p>
-              ) : (
-                relationships.map((relationship) => (
-                  <div key={relationship.id} className="rounded-xl border border-white/10 bg-white/[0.03] p-3">
-                    <div className="text-sm text-slate-200">{relationship.description ?? relationship.id}</div>
-                    <div className="mt-1 text-xs text-slate-500">{relationship.technology ?? relationship.protocol ?? "flow"}</div>
-                  </div>
-                ))
-              )}
-            </div>
+          <Card title="Visual connections">
+            <EgoGraph element={element} relationships={relationships} elementById={elementById} />
           </Card>
         </div>
-        <div className="mt-5 grid gap-5 xl:grid-cols-3">
+        <div className="mt-5 grid gap-5 xl:grid-cols-[0.9fr_1.2fr_0.9fr]">
           <Card title="Containers">
             <Stack items={element.app.containers.map((container) => ({
               title: container.name,
@@ -91,20 +86,7 @@ export default function AppInternalsPage() {
             }))} />
           </Card>
           <Card title="Config read-only">
-            <Stack items={[
-              ...element.app.configMaps.map((configMap) => ({
-                title: `ConfigMap/${configMap.name}`,
-                lines: [
-                  configMap.keys.join(", ") || "no keys",
-                  configMap.redacted ? "values redacted by policy" : "values allowlisted",
-                ],
-              })),
-              ...element.app.containers.flatMap((container) => [
-                ...container.envFromConfigMaps.map((name) => ({ title: `envFrom ConfigMap/${name}`, lines: ["keys exposed through workload spec"] })),
-                ...container.envFromSecrets.map((name) => ({ title: `envFrom Secret/${name}`, lines: ["reference only; values never exported"] })),
-                ...container.secretRefs.map((name) => ({ title: `Secret/${name}`, lines: ["reference only; values never exported"] })),
-              ]),
-            ]} />
+            <ConfigMatrix element={element} />
           </Card>
           <Card title="Volumes">
             <Stack items={element.app.volumes.map((volume) => ({
@@ -120,11 +102,13 @@ export default function AppInternalsPage() {
 
 function AppHeader({ element }: { element: C4Element }) {
   const logoPath = element.icon ? simpleIconPath(element.icon.slug) : undefined;
+  const accent = zoneColor(element);
+  const health = healthState(element);
   return (
-    <div className="rounded-3xl border border-white/10 bg-slate-950/70 p-6 shadow-2xl backdrop-blur">
+    <div className="rounded-3xl border border-white/10 bg-slate-950/70 p-6 shadow-2xl backdrop-blur" style={{ "--c4-accent": accent } as CSSProperties}>
       <div className="flex flex-wrap items-start gap-4">
         {logoPath ? (
-          <div className="grid h-16 w-16 shrink-0 place-items-center rounded-3xl border border-sky-300/20 bg-sky-400/15 text-sky-100">
+          <div className={`c4-node-icon c4-node-icon-${nodeRole(element)} h-16 w-16 rounded-3xl`}>
             <svg viewBox="0 0 24 24" className="h-9 w-9" aria-label={element.icon?.title} role="img">
               <path fill="currentColor" d={logoPath} />
             </svg>
@@ -135,6 +119,10 @@ function AppHeader({ element }: { element: C4Element }) {
             <LifecycleBadge lifecycle={element.lifecycle} />
             <ProvenanceBadge sourceKind={element.source.sourceKind} />
             <span className="rounded-full border border-sky-300/20 bg-sky-400/10 px-2.5 py-1 text-xs font-semibold text-sky-100">{element.zone}</span>
+            <span className={`inline-flex items-center gap-1.5 rounded-full border border-white/10 bg-white/[0.04] px-2.5 py-1 text-xs font-semibold text-slate-200`}>
+              <span className={`c4-health-dot c4-health-${health}`} />
+              {healthLabel(health)}
+            </span>
           </div>
           <h1 className="text-4xl font-semibold tracking-[-0.04em] text-slate-50">{element.name}</h1>
           <p className="mt-3 max-w-3xl text-sm leading-6 text-slate-400">{element.description ?? "Runtime and configuration read model exported from Kubernetes."}</p>
@@ -145,6 +133,88 @@ function AppHeader({ element }: { element: C4Element }) {
       </div>
     </div>
   );
+}
+
+function EgoGraph({
+  element,
+  relationships,
+  elementById,
+}: {
+  element: C4Element;
+  relationships: C4Relationship[];
+  elementById: Map<string, C4Element>;
+}) {
+  const incoming = relationships.filter((relationship) => relationship.targetId === element.id);
+  const outgoing = relationships.filter((relationship) => relationship.sourceId === element.id);
+  return (
+    <div className="grid gap-3 md:grid-cols-[1fr_auto_1fr]">
+      <ConnectionColumn title="Incoming" relationships={incoming} elementById={elementById} side="source" />
+      <div className="flex items-center justify-center">
+        <div className="rounded-2xl border border-sky-300/30 bg-sky-400/10 px-4 py-3 text-center">
+          <div className="text-sm font-semibold text-sky-100">{element.app?.name ?? element.name}</div>
+          <div className="mt-1 text-xs text-slate-500">{relationships.length} links</div>
+        </div>
+      </div>
+      <ConnectionColumn title="Outgoing" relationships={outgoing} elementById={elementById} side="target" />
+    </div>
+  );
+}
+
+function ConnectionColumn({
+  title,
+  relationships,
+  elementById,
+  side,
+}: {
+  title: string;
+  relationships: C4Relationship[];
+  elementById: Map<string, C4Element>;
+  side: "source" | "target";
+}) {
+  return (
+    <div>
+      <div className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">{title}</div>
+      <div className="mt-2 space-y-2">
+        {relationships.length === 0 ? <p className="rounded-xl border border-dashed border-slate-700 p-3 text-xs text-slate-500">No links.</p> : null}
+        {relationships.map((relationship) => {
+          const neighbor = elementById.get(side === "source" ? relationship.sourceId : relationship.targetId);
+          const kind = flowKind(relationship);
+          return (
+            <div key={relationship.id} className="rounded-xl border border-white/10 bg-white/[0.03] p-3">
+              <div className="flex items-center gap-2">
+                <span className="h-2 w-8 rounded-full" style={{ background: flowColor(kind) }} />
+                <span className="truncate text-sm font-medium text-slate-200">{neighbor?.name ?? "Unknown"}</span>
+              </div>
+              <div className="mt-1 text-xs text-slate-500">{relationship.description ?? relationship.technology ?? kind}</div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function ConfigMatrix({ element }: { element: C4Element }) {
+  const app = element.app;
+  if (!app) return null;
+  const configItems = [
+    ...app.configMaps.map((configMap) => ({
+      title: `ConfigMap/${configMap.name}`,
+      lines: [
+        configMap.keys.join(", ") || "no keys",
+        configMap.redacted ? "values redacted by policy" : "values allowlisted",
+        ...(configMap.data ? Object.entries(configMap.data).map(([key, value]) => `${key}: ${value}`) : []),
+      ],
+    })),
+    ...app.containers.flatMap((container) => [
+      { title: `Env/${container.name}`, lines: container.env.length ? container.env : ["no env vars"] },
+      ...container.envFromConfigMaps.map((name) => ({ title: `envFrom ConfigMap/${name}`, lines: ["keys exposed through workload spec"] })),
+      ...container.envFromSecrets.map((name) => ({ title: `envFrom Secret/${name}`, lines: ["reference only; values never exported"] })),
+      ...container.configMapRefs.map((name) => ({ title: `ConfigMap key/${name}`, lines: ["reference only unless allowlisted"] })),
+      ...container.secretRefs.map((name) => ({ title: `Secret/${name}`, lines: ["reference only; values never exported"] })),
+    ]),
+  ];
+  return <Stack items={configItems} />;
 }
 
 function Card({ title, children }: { title: string; children: ReactNode }) {

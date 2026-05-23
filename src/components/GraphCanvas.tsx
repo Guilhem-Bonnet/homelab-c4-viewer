@@ -1,27 +1,53 @@
 "use client";
 
 import Link from "next/link";
-import { ReactFlow, Controls, Handle, MiniMap, Panel, Position, type Edge, type Node, type ReactFlowInstance } from "@xyflow/react";
+import {
+  ReactFlow,
+  BaseEdge,
+  Controls,
+  EdgeLabelRenderer,
+  Handle,
+  MiniMap,
+  Panel,
+  Position,
+  type Edge,
+  type EdgeProps,
+  type Node,
+  type ReactFlowInstance,
+} from "@xyflow/react";
 import clsx from "clsx";
 import { Crosshair, Layers3, Maximize2, Minus, Plus, Search, Waypoints } from "lucide-react";
 import { useMemo, useState } from "react";
+import type { CSSProperties } from "react";
 import type { C4Element, C4Lifecycle, C4Relationship, C4View } from "@/types/c4";
 import { Background, NODE_HEIGHT, NODE_WIDTH, iconFor, toFlow } from "@/lib/view-model";
 import { simpleIconPath } from "@/lib/app-icons";
+import { flowColor, healthLabel, healthState, nodeRole, zoneColor, zoneKey, type FlowKind, type HealthState, type NodeRole } from "@/lib/visual-style";
 import { ElementDetail, RelationshipDetail } from "./DetailPanel";
 import { LifecycleBadge } from "./LifecycleBadge";
 
-function NodeCard({ element }: { element: C4Element }) {
+type DensityMode = "compact" | "normal" | "detail";
+type LabelMode = "focus" | "hover" | "always";
+type LayerId = "apps" | "storage" | "security" | "observability" | "external";
+
+function HealthDot({ state }: { state: HealthState }) {
+  return <span className={`c4-health-dot c4-health-${state}`} title={healthLabel(state)} />;
+}
+
+function NodeCard({ element, density }: { element: C4Element; density: DensityMode }) {
   const Icon = iconFor(element);
   const logoPath = element.icon ? simpleIconPath(element.icon.slug) : undefined;
   const boundary = element.name.includes("/") ? element.name.split("/")[0] : element.canonicalId.split(".")[0];
+  const role = nodeRole(element);
+  const health = healthState(element);
+  const accent = zoneColor(element);
   return (
-    <div className="relative overflow-hidden p-4">
+    <div className="relative overflow-hidden p-4" style={{ "--c4-accent": accent } as CSSProperties}>
       <Handle type="target" position={Position.Left} className="c4-handle c4-handle-target" />
       <Handle type="source" position={Position.Right} className="c4-handle c4-handle-source" />
-      <div className="pointer-events-none absolute -right-6 -top-8 h-24 w-24 rounded-full bg-sky-400/10 blur-2xl" />
+      <div className="pointer-events-none absolute -right-6 -top-8 h-24 w-24 rounded-full blur-2xl" style={{ background: `${accent}22` }} />
       <div className="flex items-start gap-3">
-        <div className="grid h-14 w-14 shrink-0 place-items-center rounded-2xl border border-sky-300/20 bg-sky-400/15 text-sky-200 shadow-lg shadow-sky-950/40">
+        <div className={`c4-node-icon c4-node-icon-${role}`}>
           {logoPath ? (
             <svg viewBox="0 0 24 24" className="h-7 w-7" aria-label={element.icon?.title} role="img">
               <path fill="currentColor" d={logoPath} />
@@ -31,28 +57,39 @@ function NodeCard({ element }: { element: C4Element }) {
           )}
         </div>
         <div className="min-w-0">
-          <div className="truncate text-sm font-semibold text-slate-100">{element.name}</div>
-          <div className="mt-1 truncate text-xs text-slate-500">{element.technology ?? element.type}</div>
+          <div className="flex min-w-0 items-center gap-2">
+            <div className="truncate text-sm font-semibold text-slate-100">{element.name}</div>
+            <HealthDot state={health} />
+          </div>
+          {density !== "compact" ? <div className="mt-1 truncate text-xs text-slate-500">{element.technology ?? element.type}</div> : null}
         </div>
       </div>
-      <div className="mt-4 flex flex-wrap gap-1.5">
+      <div className={clsx("mt-4 flex flex-wrap gap-1.5", density === "compact" && "hidden")}>
         {boundary ? (
-          <span className="rounded-full border border-sky-300/20 bg-sky-400/10 px-2 py-0.5 text-[11px] font-semibold uppercase tracking-[0.14em] text-sky-200">
+          <span className="rounded-full border px-2 py-0.5 text-[11px] font-semibold uppercase tracking-[0.14em]" style={{ borderColor: `${accent}44`, background: `${accent}18`, color: accent }}>
             {boundary}
           </span>
         ) : null}
         <LifecycleBadge lifecycle={element.lifecycle} />
-        {element.tags.slice(0, 2).map((tag) => (
+        {element.tags.slice(0, density === "detail" ? 4 : 2).map((tag) => (
           <span key={tag} className="rounded-full bg-slate-800 px-2 py-0.5 text-[11px] text-slate-400">{tag}</span>
         ))}
       </div>
+      {density === "detail" && element.app ? (
+        <div className="mt-3 grid grid-cols-3 gap-1.5 text-[10px] text-slate-500">
+          <span>{element.app.containers.length} ctr</span>
+          <span>{element.app.services.length} svc</span>
+          <span>{element.app.volumes.length} vol</span>
+        </div>
+      ) : null}
     </div>
   );
 }
 
 function BoundaryCard({ data }: { data: { label: string; count: number } }) {
+  const accent = zoneColor(data.label);
   return (
-    <div className="c4-boundary-card">
+    <div className="c4-boundary-card" style={{ "--c4-accent": accent } as CSSProperties}>
       <span>{data.label}</span>
       <strong>{data.count}</strong>
     </div>
@@ -60,8 +97,66 @@ function BoundaryCard({ data }: { data: { label: string; count: number } }) {
 }
 
 const nodeTypes = {
-  default: ({ data }: { data: { element: C4Element } }) => <NodeCard element={data.element} />,
+  default: ({ data }: { data: { element: C4Element; density?: DensityMode } }) => <NodeCard element={data.element} density={data.density ?? "normal"} />,
   boundary: BoundaryCard,
+};
+
+type ArchitectureEdgeData = {
+  relationship: C4Relationship;
+  laneOffset?: number;
+  flowKind?: FlowKind;
+  isImpact?: boolean;
+  labelMode?: LabelMode;
+};
+
+function ArchitectureEdge(props: EdgeProps<Edge<ArchitectureEdgeData>>) {
+  const laneOffset = props.data?.laneOffset ?? 0;
+  const kind = props.data?.flowKind ?? "service";
+  const color = flowColor(kind);
+  const dx = Math.max(96, Math.abs(props.targetX - props.sourceX) * 0.42);
+  const c1x = props.sourceX + dx;
+  const c2x = props.targetX - dx;
+  const c1y = props.sourceY + laneOffset;
+  const c2y = props.targetY + laneOffset;
+  const path = `M ${props.sourceX},${props.sourceY} C ${c1x},${c1y} ${c2x},${c2y} ${props.targetX},${props.targetY}`;
+  const labelX = (props.sourceX + props.targetX) / 2;
+  const labelY = (props.sourceY + props.targetY) / 2 + laneOffset;
+  const label = props.label ?? props.data?.relationship.description;
+  const showLabel = props.data?.labelMode === "always" || (props.data?.labelMode === "focus" && props.data?.isImpact);
+
+  return (
+    <>
+      <BaseEdge
+        id={props.id}
+        path={path}
+        markerEnd={props.markerEnd}
+        className={clsx(
+          props.data?.relationship.lifecycle === "deprecated" ? "c4-edge-deprecated" : "c4-edge",
+          `c4-edge-flow-${kind}`,
+          { "c4-edge-impact": props.data?.isImpact },
+        )}
+        style={{ ...props.style, stroke: color }}
+        interactionWidth={24}
+      />
+      {label ? (
+        <EdgeLabelRenderer>
+          <div
+            className={clsx("c4-edge-label", {
+              "c4-edge-label-visible": showLabel,
+              "c4-edge-label-hover": props.data?.labelMode === "hover",
+            })}
+            style={{ transform: `translate(-50%, -50%) translate(${labelX}px, ${labelY}px)`, "--c4-accent": color } as CSSProperties}
+          >
+            {String(label)}
+          </div>
+        </EdgeLabelRenderer>
+      ) : null}
+    </>
+  );
+}
+
+const edgeTypes = {
+  architecture: ArchitectureEdge,
 };
 
 const levelLabels: Record<C4View["level"], string> = {
@@ -82,6 +177,19 @@ const flowOptions = [
   { id: "observability-flow", label: "Observability" },
 ] as const;
 type FlowFilter = (typeof flowOptions)[number]["id"];
+const layerOptions: Array<{ id: LayerId; label: string; roles: NodeRole[] }> = [
+  { id: "apps", label: "Apps", roles: ["app", "gateway", "database"] },
+  { id: "storage", label: "Storage", roles: ["storage"] },
+  { id: "security", label: "Security", roles: ["security"] },
+  { id: "observability", label: "Monitoring", roles: ["observability"] },
+  { id: "external", label: "External/AWS", roles: ["external", "cloud"] },
+];
+const densityOptions: DensityMode[] = ["compact", "normal", "detail"];
+const labelOptions: Array<{ id: LabelMode; label: string }> = [
+  { id: "focus", label: "Labels on focus" },
+  { id: "hover", label: "Labels subtle" },
+  { id: "always", label: "Labels always" },
+];
 
 function isBoundaryNode(node: Node): node is Node<{ childIds: string[]; label: string; count: number }> {
   return node.type === "boundary";
@@ -118,6 +226,15 @@ export function GraphCanvas({
   const [lifecycleFilter, setLifecycleFilter] = useState<C4Lifecycle | "all">("all");
   const [zoneFilter, setZoneFilter] = useState("all");
   const [flowFilter, setFlowFilter] = useState<FlowFilter>("all");
+  const [density, setDensity] = useState<DensityMode>("normal");
+  const [labelMode, setLabelMode] = useState<LabelMode>("focus");
+  const [activeLayers, setActiveLayers] = useState<Record<LayerId, boolean>>({
+    apps: true,
+    storage: true,
+    security: true,
+    observability: true,
+    external: true,
+  });
   const [flow, setFlow] = useState<ReactFlowInstance | null>(null);
   const zoneOptions = useMemo(
     () => ["all", ...Array.from(new Set(view.elements.map((element) => element.zone ?? "core"))).sort()],
@@ -126,11 +243,16 @@ export function GraphCanvas({
 
   const filteredElements = useMemo(
     () =>
-      view.elements.filter((element) =>
-        (lifecycleFilter === "all" ? true : element.lifecycle === lifecycleFilter) &&
-        (zoneFilter === "all" ? true : (element.zone ?? "core") === zoneFilter),
-      ),
-    [lifecycleFilter, view.elements, zoneFilter],
+      view.elements.filter((element) => {
+        const role = nodeRole(element);
+        const layer = layerOptions.find((option) => option.roles.includes(role))?.id ?? "apps";
+        return (
+          (lifecycleFilter === "all" ? true : element.lifecycle === lifecycleFilter) &&
+          (zoneFilter === "all" ? true : (element.zone ?? "core") === zoneFilter) &&
+          activeLayers[layer]
+        );
+      }),
+    [activeLayers, lifecycleFilter, view.elements, zoneFilter],
   );
   const visibleElementIds = useMemo(() => new Set(filteredElements.map((element) => element.id)), [filteredElements]);
   const queryMatches = useMemo(
@@ -157,16 +279,17 @@ export function GraphCanvas({
         )
         .map((node) => ({
           ...node,
+          data: isBoundaryNode(node) ? node.data : { ...node.data, density },
           className: isBoundaryNode(node)
             ? "c4-boundary"
-            : clsx("c4-node", {
+            : clsx("c4-node", `c4-role-${nodeRole((node.data as { element: C4Element }).element)}`, `c4-zone-${zoneKey((node.data as { element: C4Element }).element)}`, `c4-health-${healthState((node.data as { element: C4Element }).element)}`, {
                 "c4-node-dimmed": query.trim() && !queryMatches.has(node.id),
                 "c4-node-match": query.trim() && queryMatches.has(node.id),
                 "c4-node-impact": impactElementIds.has(node.id),
                 "c4-node-selected": selectedElement?.id === node.id,
               }),
         })),
-    [impactElementIds, nodes, query, queryMatches, selectedElement?.id, visibleElementIds],
+    [density, impactElementIds, nodes, query, queryMatches, selectedElement?.id, visibleElementIds],
   );
   const visibleEdges = useMemo(
     () =>
@@ -191,9 +314,10 @@ export function GraphCanvas({
             ...edge,
             className: clsx(edge.className, { "c4-edge-impact": isImpact }),
             animated: Boolean(isImpact),
+            data: { ...(edge.data as ArchitectureEdgeData), isImpact: Boolean(isImpact), labelMode },
           };
         }),
-    [edges, flowFilter, selectedElement, visibleElementIds],
+    [edges, flowFilter, labelMode, selectedElement, visibleElementIds],
   );
   const searchResults = useMemo(
     () => filteredElements.filter((element) => matchesQuery(element, query)).slice(0, 8),
@@ -226,6 +350,10 @@ export function GraphCanvas({
     flow?.fitView({ padding: 0.16, duration: 500 });
   }
 
+  function toggleLayer(layer: LayerId) {
+    setActiveLayers((current) => ({ ...current, [layer]: !current[layer] }));
+  }
+
   function onNodeClick(_: unknown, node: Node) {
     setSelectedRelationship(null);
     setSelectedElement((node.data as { element: C4Element }).element);
@@ -239,7 +367,7 @@ export function GraphCanvas({
   return (
     <div className="grid h-[calc(100vh-73px)] grid-cols-[1fr_360px]">
       <section className="relative">
-        <div className="absolute left-6 top-6 z-10 w-[min(680px,calc(100%-48px))] rounded-2xl border border-white/10 bg-slate-950/75 p-4 shadow-2xl backdrop-blur">
+        <div className="absolute left-6 top-6 z-10 max-h-[calc(100vh-150px)] w-[min(760px,calc(100%-48px))] overflow-auto rounded-2xl border border-white/10 bg-slate-950/80 p-4 shadow-2xl backdrop-blur">
           <div className="flex items-center gap-3">
             <LifecycleBadge lifecycle={view.lifecycle} />
             <span className="text-sm text-slate-400">
@@ -313,6 +441,10 @@ export function GraphCanvas({
                       : "text-slate-400 hover:bg-white/5 hover:text-slate-100",
                   )}
                 >
+                  <span
+                    className="mr-1.5 inline-block h-2 w-2 rounded-full align-middle"
+                    style={{ background: zone === "all" ? "#94a3b8" : zoneColor(zone) }}
+                  />
                   {zone === "all" ? "All zones" : zone}
                 </button>
               ))}
@@ -326,6 +458,66 @@ export function GraphCanvas({
                 <option key={option.id} value={option.id}>{option.label}</option>
               ))}
             </select>
+          </div>
+          <div className="mt-3 rounded-2xl border border-white/10 bg-slate-900/45 p-3">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div>
+                <div className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Layers</div>
+                <p className="mt-1 text-xs text-slate-500">Cache les calques bruyants sans perdre le contexte C4.</p>
+              </div>
+              <div className="flex gap-2">
+                <select
+                  value={density}
+                  onChange={(event) => setDensity(event.target.value as DensityMode)}
+                  className="rounded-xl border border-white/10 bg-slate-950/80 px-3 py-2 text-xs text-slate-200 outline-none"
+                >
+                  {densityOptions.map((option) => (
+                    <option key={option} value={option}>{option}</option>
+                  ))}
+                </select>
+                <select
+                  value={labelMode}
+                  onChange={(event) => setLabelMode(event.target.value as LabelMode)}
+                  className="rounded-xl border border-white/10 bg-slate-950/80 px-3 py-2 text-xs text-slate-200 outline-none"
+                >
+                  {labelOptions.map((option) => (
+                    <option key={option.id} value={option.id}>{option.label}</option>
+                  ))}
+                </select>
+              </div>
+            </div>
+            <div className="mt-3 grid gap-2 sm:grid-cols-5">
+              {layerOptions.map((layer) => (
+                <button
+                  key={layer.id}
+                  type="button"
+                  onClick={() => toggleLayer(layer.id)}
+                  className={clsx(
+                    "rounded-xl border px-2 py-2 text-left text-xs transition",
+                    activeLayers[layer.id]
+                      ? "border-sky-300/20 bg-sky-400/10 text-sky-100"
+                      : "border-white/10 bg-slate-950/50 text-slate-500",
+                  )}
+                >
+                  <span className="block font-semibold">{layer.label}</span>
+                  <span className="mt-1 block text-[10px] opacity-70">{layer.roles.join(", ")}</span>
+                </button>
+              ))}
+            </div>
+            <div className="mt-3 flex flex-wrap gap-2 text-[11px] text-slate-400">
+              {flowOptions.filter((option) => option.id !== "all" && option.id !== "critical").map((option) => (
+                <span key={option.id} className="inline-flex items-center gap-1.5 rounded-full border border-white/10 bg-white/[0.03] px-2 py-1">
+                  <span className="h-1.5 w-5 rounded-full" style={{ background: flowColor(option.id.replace("-flow", "") as FlowKind) }} />
+                  {option.label}
+                </span>
+              ))}
+              {(["healthy", "degraded", "down", "unknown"] as HealthState[]).map((state) => (
+                <span key={state} className="inline-flex items-center gap-1.5 rounded-full border border-white/10 bg-white/[0.03] px-2 py-1">
+                  <HealthDot state={state} />
+                  {healthLabel(state)}
+                </span>
+              ))}
+            </div>
           </div>
           <div className="mt-3 flex flex-wrap gap-2">
             {searchResults.map((element) => (
@@ -350,6 +542,7 @@ export function GraphCanvas({
           nodes={visibleNodes}
           edges={visibleEdges}
           nodeTypes={nodeTypes}
+          edgeTypes={edgeTypes}
           onInit={setFlow}
           onNodeClick={onNodeClick}
           onEdgeClick={onEdgeClick}
@@ -380,7 +573,10 @@ export function GraphCanvas({
             pannable
             zoomable
             nodeStrokeWidth={3}
-            nodeColor="rgba(56, 189, 248, 0.62)"
+            nodeColor={(node) => {
+              if (isBoundaryNode(node)) return "rgba(15, 23, 42, 0.2)";
+              return zoneColor((node.data as { element: C4Element }).element);
+            }}
             nodeStrokeColor="rgba(186, 230, 253, 0.75)"
             maskColor="rgba(2, 6, 23, 0.58)"
           />

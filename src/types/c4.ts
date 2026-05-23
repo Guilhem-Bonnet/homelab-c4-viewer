@@ -84,6 +84,18 @@ export type C4AppMetadata = {
   configMaps: C4ConfigMapSummary[];
   secretRefs?: string[];
   services: C4ServiceSummary[];
+  health?: {
+    status: "healthy" | "degraded" | "down" | "unknown";
+    desiredReplicas?: number;
+    readyReplicas?: number;
+    availableReplicas?: number;
+    conditions?: Array<{
+      type: string;
+      status: string;
+      reason?: string;
+      message?: string;
+    }>;
+  };
   source: C4SourceMetadata;
 };
 
