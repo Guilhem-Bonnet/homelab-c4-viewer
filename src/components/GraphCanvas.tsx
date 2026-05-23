@@ -41,11 +41,15 @@ function NodeCard({ element, density }: { element: C4Element; density: DensityMo
   const role = nodeRole(element);
   const health = healthState(element);
   const accent = zoneColor(element);
+  // Filter out Structurizr system tags — they add noise with no user value
+  const systemTags = new Set(["Element", "Container", "Component", "Software System", "Person", "Database", "Queue", "Relationship"]);
+  const customTags = element.tags.filter((tag) => !systemTags.has(tag));
   return (
     <div className="relative overflow-hidden p-4" style={{ "--c4-accent": accent } as CSSProperties}>
       <Handle type="target" position={Position.Left} className="c4-handle c4-handle-target" />
       <Handle type="source" position={Position.Right} className="c4-handle c4-handle-source" />
-      <div className="pointer-events-none absolute -right-6 -top-8 h-24 w-24 rounded-full blur-2xl" style={{ background: `${accent}22` }} />
+      {/* very subtle ambient glow — reduced opacity vs previous 0x22 */}
+      <div className="pointer-events-none absolute -right-6 -top-8 h-20 w-20 rounded-full blur-2xl" style={{ background: `${accent}14` }} />
       <div className="flex items-start gap-3">
         <div className={`c4-node-icon c4-node-icon-${role}`}>
           {logoPath ? (
@@ -65,14 +69,17 @@ function NodeCard({ element, density }: { element: C4Element; density: DensityMo
         </div>
       </div>
       <div className={clsx("mt-4 flex flex-wrap gap-1.5", density === "compact" && "hidden")}>
+        {/* zone badge: always show in normal/detail */}
         {boundary ? (
-          <span className="rounded-full border px-2 py-0.5 text-[11px] font-semibold uppercase tracking-[0.14em]" style={{ borderColor: `${accent}44`, background: `${accent}18`, color: accent }}>
+          <span className="rounded-full border px-2 py-0.5 text-[11px] font-semibold uppercase tracking-[0.14em]" style={{ borderColor: `${accent}36`, background: `${accent}10`, color: accent }}>
             {boundary}
           </span>
         ) : null}
-        <LifecycleBadge lifecycle={element.lifecycle} />
-        {element.tags.slice(0, density === "detail" ? 4 : 2).map((tag) => (
-          <span key={tag} className="rounded-full bg-slate-800 px-2 py-0.5 text-[11px] text-slate-400">{tag}</span>
+        {/* lifecycle badge: only show for non-live states (LIVE is the default/noisy) */}
+        {(element.lifecycle !== "live" || density === "detail") ? <LifecycleBadge lifecycle={element.lifecycle} /> : null}
+        {/* custom tags only — filtered system tags */}
+        {customTags.slice(0, density === "detail" ? 4 : 0).map((tag) => (
+          <span key={tag} className="rounded-full bg-slate-800/80 px-2 py-0.5 text-[11px] text-slate-400">{tag}</span>
         ))}
       </div>
       {density === "detail" && element.app ? (
@@ -107,6 +114,7 @@ type ArchitectureEdgeData = {
   flowKind?: FlowKind;
   isImpact?: boolean;
   labelMode?: LabelMode;
+  isHoverConnected?: boolean;
 };
 
 function ArchitectureEdge(props: EdgeProps<Edge<ArchitectureEdgeData>>) {
@@ -122,7 +130,11 @@ function ArchitectureEdge(props: EdgeProps<Edge<ArchitectureEdgeData>>) {
   const labelX = (props.sourceX + props.targetX) / 2;
   const labelY = (props.sourceY + props.targetY) / 2 + laneOffset;
   const label = props.label ?? props.data?.relationship.description;
-  const showLabel = props.data?.labelMode === "always" || (props.data?.labelMode === "focus" && props.data?.isImpact);
+  // show label when: always mode, or this edge connects to the hovered node, or it connects to the selected element
+  const showLabel =
+    props.data?.labelMode === "always" ||
+    props.data?.isHoverConnected ||
+    props.data?.isImpact;
 
   return (
     <>
@@ -236,6 +248,17 @@ export function GraphCanvas({
     external: true,
   });
   const [flow, setFlow] = useState<ReactFlowInstance | null>(null);
+  const [hoveredId, setHoveredId] = useState<string | null>(null);
+  // Set of node ids that should stay fully visible during hover isolation
+  const hoverNeighborIds = useMemo((): Set<string> | null => {
+    if (!hoveredId) return null;
+    return new Set([
+      hoveredId,
+      ...view.relationships
+        .filter((r) => r.sourceId === hoveredId || r.targetId === hoveredId)
+        .flatMap((r) => [r.sourceId, r.targetId]),
+    ]);
+  }, [hoveredId, view.relationships]);
   const zoneOptions = useMemo(
     () => ["all", ...Array.from(new Set(view.elements.map((element) => element.zone ?? "core"))).sort()],
     [view.elements],
@@ -287,9 +310,11 @@ export function GraphCanvas({
                 "c4-node-match": query.trim() && queryMatches.has(node.id),
                 "c4-node-impact": impactElementIds.has(node.id),
                 "c4-node-selected": selectedElement?.id === node.id,
+                // hover isolation: dim nodes not connected to the hovered node
+                "c4-node-hover-dim": hoverNeighborIds !== null && !hoverNeighborIds.has(node.id),
               }),
         })),
-    [density, impactElementIds, nodes, query, queryMatches, selectedElement?.id, visibleElementIds],
+    [density, hoverNeighborIds, impactElementIds, nodes, query, queryMatches, selectedElement?.id, visibleElementIds],
   );
   const visibleEdges = useMemo(
     () =>
@@ -310,14 +335,22 @@ export function GraphCanvas({
           const isImpact =
             selectedElement &&
             (relationship.sourceId === selectedElement.id || relationship.targetId === selectedElement.id);
+          const isHoverConnected =
+            hoveredId !== null &&
+            (relationship.sourceId === hoveredId || relationship.targetId === hoveredId);
           return {
             ...edge,
-            className: clsx(edge.className, { "c4-edge-impact": isImpact }),
+            className: clsx(edge.className, {
+              "c4-edge-impact": isImpact,
+              // hover isolation: dim unrelated edges, highlight connected ones
+              "c4-edge-hover-dim": hoveredId !== null && !isHoverConnected,
+              "c4-edge-hover-active": isHoverConnected,
+            }),
             animated: Boolean(isImpact),
-            data: { ...(edge.data as ArchitectureEdgeData), isImpact: Boolean(isImpact), labelMode },
+            data: { ...(edge.data as ArchitectureEdgeData), isImpact: Boolean(isImpact), labelMode, isHoverConnected: Boolean(isHoverConnected) },
           };
         }),
-    [edges, flowFilter, labelMode, selectedElement, visibleElementIds],
+    [edges, flowFilter, hoveredId, labelMode, selectedElement, visibleElementIds],
   );
   const searchResults = useMemo(
     () => filteredElements.filter((element) => matchesQuery(element, query)).slice(0, 8),
@@ -546,6 +579,8 @@ export function GraphCanvas({
           onInit={setFlow}
           onNodeClick={onNodeClick}
           onEdgeClick={onEdgeClick}
+          onNodeMouseEnter={(_e, node) => { if (!isBoundaryNode(node)) setHoveredId(node.id); }}
+          onNodeMouseLeave={() => setHoveredId(null)}
           fitView
           minZoom={0.08}
           maxZoom={1.8}

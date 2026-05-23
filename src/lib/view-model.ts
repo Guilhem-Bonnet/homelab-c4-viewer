@@ -111,11 +111,13 @@ function layoutNodes(view: C4View, edges: Edge[]): Node[] {
   graph.setDefaultEdgeLabel(() => ({}));
   graph.setGraph({
     rankdir: "LR",
-    nodesep: view.elements.length > 40 ? 116 : 104,
-    ranksep: view.elements.length > 40 ? 210 : 250,
-    edgesep: 52,
+    align: "UL",           // left-align nodes within each rank column for cleaner rows
+    acyclicer: "greedy",   // reduce edge crossings from back-edges
+    nodesep: view.elements.length > 40 ? 100 : 104,
+    ranksep: view.elements.length > 40 ? 240 : 250,
+    edgesep: 48,
     marginx: 80,
-    marginy: 120,
+    marginy: 100,
   });
 
   view.elements.forEach((element) => graph.setNode(element.id, { width: NODE_WIDTH, height: NODE_HEIGHT }));
