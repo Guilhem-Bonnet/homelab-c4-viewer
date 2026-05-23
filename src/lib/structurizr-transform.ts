@@ -3,10 +3,12 @@ import type {
   C4Lifecycle,
   C4Relationship,
   C4View,
+  C4MetadataBundle,
   NormalizedC4Model,
 } from "@/types/c4";
 import type { StructurizrContainerView, StructurizrElement, StructurizrRelationship, StructurizrWorkspace } from "@/types/structurizr";
 import type { C4Registry } from "./registry";
+import { iconForElement, serviceSlug } from "./app-icons";
 
 function tags(value?: string): string[] {
   return (value ?? "")
@@ -44,19 +46,32 @@ function collectRelationships(elements: StructurizrElement[], workspace: Structu
   ];
 }
 
-function normalizeElement(element: ElementWithParent, registry: C4Registry): C4Element {
+function elementZone(element: StructurizrElement): string {
+  if (element.name.includes("/")) return element.name.split("/")[0] ?? "core";
+  if ((element.type ?? "").toLowerCase().includes("person")) return "people";
+  if (tags(element.tags).some((tag) => tag.toLowerCase() === "external")) return "external";
+  return tags(element.tags).find((tag) => ["media", "ai", "edge", "aws", "auth", "monitoring", "storage"].includes(tag.toLowerCase()))?.toLowerCase() ?? "core";
+}
+
+function normalizeElement(element: ElementWithParent, registry: C4Registry, metadata?: C4MetadataBundle): C4Element {
   const id = canonicalId(element);
   const elementTags = tags(element.tags);
+  const app = metadata?.apps[element.name];
+  const icon = iconForElement({ name: element.name, tags: elementTags });
   const overlay = registry.elements[id];
   return {
     id: element.id,
     canonicalId: id,
+    slug: serviceSlug(element.name),
+    zone: app?.namespace ?? elementZone(element),
     name: element.name,
     type: element.type ?? "Element",
     description: element.description,
     technology: element.technology,
     parentId: element.parentId,
     tags: elementTags,
+    icon,
+    app,
     lifecycle: overlay?.lifecycle ?? lifecycleFromTags(elementTags),
     documentation: overlay?.documentation ?? [],
     source: overlay?.source ?? { sourceKind: "as-code", sourcePath: "/api/workspace/1" },
@@ -99,10 +114,10 @@ function normalizeRelationship(
   };
 }
 
-export function normalizeWorkspace(workspace: StructurizrWorkspace, registry: C4Registry): NormalizedC4Model {
+export function normalizeWorkspace(workspace: StructurizrWorkspace, registry: C4Registry, metadata?: C4MetadataBundle): NormalizedC4Model {
   const rawElements = collectElements(workspace);
   const rawRelationships = collectRelationships(rawElements, workspace);
-  const elements = rawElements.map((element) => normalizeElement(element, registry));
+  const elements = rawElements.map((element) => normalizeElement(element, registry, metadata));
   const elementById = new Map(elements.map((element) => [element.id, element]));
   const relationships = rawRelationships.map((relationship) =>
     normalizeRelationship(relationship, registry, elementById),
@@ -153,5 +168,6 @@ export function normalizeWorkspace(workspace: StructurizrWorkspace, registry: C4
     views,
     elements,
     relationships,
+    metadata,
   };
 }

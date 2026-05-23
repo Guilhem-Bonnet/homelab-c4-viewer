@@ -18,17 +18,94 @@ export type C4SourceMetadata = {
   reviewedBy?: string;
 };
 
+export type C4AppIcon = {
+  slug: string;
+  title: string;
+  hex: string;
+  source: "simple-icons" | "custom" | "fallback";
+};
+
+export type C4Port = {
+  name?: string;
+  port?: number;
+  targetPort?: string | number;
+  containerPort?: number;
+  protocol?: string;
+};
+
+export type C4ContainerRuntime = {
+  name: string;
+  image?: string;
+  ports: C4Port[];
+  env: string[];
+  envFromConfigMaps: string[];
+  envFromSecrets: string[];
+  configMapRefs: string[];
+  secretRefs: string[];
+  volumeMounts: string[];
+  resources?: {
+    requests?: Record<string, string>;
+    limits?: Record<string, string>;
+  };
+  probes: string[];
+};
+
+export type C4VolumeRef = {
+  name: string;
+  type: "pvc" | "configmap" | "secret" | "emptyDir" | "hostPath" | "other";
+  claimName?: string;
+  configMapName?: string;
+  secretName?: string;
+};
+
+export type C4ConfigMapSummary = {
+  name: string;
+  keys: string[];
+  data?: Record<string, string>;
+  redacted: boolean;
+};
+
+export type C4ServiceSummary = {
+  name: string;
+  type: string;
+  ports: C4Port[];
+};
+
+export type C4AppMetadata = {
+  namespace: string;
+  name: string;
+  key: string;
+  kind: string;
+  replicas?: number;
+  serviceAccount?: string;
+  labels: Record<string, string>;
+  containers: C4ContainerRuntime[];
+  volumes: C4VolumeRef[];
+  configMaps: C4ConfigMapSummary[];
+  secretRefs?: string[];
+  services: C4ServiceSummary[];
+  source: C4SourceMetadata;
+};
+
+export type C4MetadataBundle = {
+  generatedAt?: string;
+  apps: Record<string, C4AppMetadata>;
+};
+
 export type C4Element = {
   id: string;
   canonicalId: string;
+  slug?: string;
+  zone?: string;
   name: string;
   type: string;
   tags: string[];
   description?: string;
   technology?: string;
   parentId?: string;
-  icon?: string;
+  icon?: C4AppIcon;
   color?: string;
+  app?: C4AppMetadata;
   lifecycle: C4Lifecycle;
   documentation: C4DocumentationRef[];
   source: C4SourceMetadata;
@@ -75,4 +152,5 @@ export type NormalizedC4Model = {
   views: C4View[];
   elements: C4Element[];
   relationships: C4Relationship[];
+  metadata?: C4MetadataBundle;
 };

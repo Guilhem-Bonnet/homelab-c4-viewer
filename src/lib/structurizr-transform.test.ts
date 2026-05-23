@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { C4Registry } from "./registry";
 import { normalizeWorkspace } from "./structurizr-transform";
+import type { C4MetadataBundle } from "@/types/c4";
 import type { StructurizrWorkspace } from "@/types/structurizr";
 
 const registry: C4Registry = {
@@ -81,5 +82,61 @@ describe("normalizeWorkspace", () => {
       "media.media.jellyseerr.to.media.media.radarr.requests.movies",
       "media.media.radarr.to.core.media.radarr.config.pvc.persists.data",
     ]);
+  });
+
+  it("attaches app metadata and logos by namespace/name key", () => {
+    const workspace: StructurizrWorkspace = {
+      name: "Test workspace",
+      model: {
+        softwareSystems: [
+          {
+            id: "1",
+            name: "HomeLab",
+            type: "Software System",
+            containers: [
+              {
+                id: "2",
+                name: "media/radarr",
+                type: "Container",
+                tags: "Container,media",
+              },
+            ],
+          },
+        ],
+      },
+      views: {
+        containerViews: [
+          {
+            key: "L2_Media",
+            elements: [{ id: "2" }],
+            relationships: [],
+          },
+        ],
+      },
+    };
+    const metadata: C4MetadataBundle = {
+      generatedAt: "now",
+      apps: {
+        "media/radarr": {
+          namespace: "media",
+          name: "radarr",
+          key: "media/radarr",
+          kind: "Deployment",
+          labels: {},
+          containers: [],
+          volumes: [],
+          configMaps: [],
+          services: [],
+          source: { sourceKind: "as-code" },
+        },
+      },
+    };
+
+    const model = normalizeWorkspace(workspace, registry, metadata);
+    const element = model.elements.find((candidate) => candidate.name === "media/radarr");
+
+    expect(element?.app?.kind).toBe("Deployment");
+    expect(element?.zone).toBe("media");
+    expect(element?.icon?.slug).toBe("radarr");
   });
 });

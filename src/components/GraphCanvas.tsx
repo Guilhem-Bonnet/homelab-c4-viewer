@@ -7,11 +7,13 @@ import { Crosshair, Layers3, Maximize2, Minus, Plus, Search, Waypoints } from "l
 import { useMemo, useState } from "react";
 import type { C4Element, C4Lifecycle, C4Relationship, C4View } from "@/types/c4";
 import { Background, NODE_HEIGHT, NODE_WIDTH, iconFor, toFlow } from "@/lib/view-model";
+import { simpleIconPath } from "@/lib/app-icons";
 import { ElementDetail, RelationshipDetail } from "./DetailPanel";
 import { LifecycleBadge } from "./LifecycleBadge";
 
 function NodeCard({ element }: { element: C4Element }) {
   const Icon = iconFor(element);
+  const logoPath = element.icon ? simpleIconPath(element.icon.slug) : undefined;
   const boundary = element.name.includes("/") ? element.name.split("/")[0] : element.canonicalId.split(".")[0];
   return (
     <div className="relative overflow-hidden p-4">
@@ -20,7 +22,13 @@ function NodeCard({ element }: { element: C4Element }) {
       <div className="pointer-events-none absolute -right-6 -top-8 h-24 w-24 rounded-full bg-sky-400/10 blur-2xl" />
       <div className="flex items-start gap-3">
         <div className="grid h-14 w-14 shrink-0 place-items-center rounded-2xl border border-sky-300/20 bg-sky-400/15 text-sky-200 shadow-lg shadow-sky-950/40">
-          <Icon className="h-7 w-7" />
+          {logoPath ? (
+            <svg viewBox="0 0 24 24" className="h-7 w-7" aria-label={element.icon?.title} role="img">
+              <path fill="currentColor" d={logoPath} />
+            </svg>
+          ) : (
+            <Icon className="h-7 w-7" />
+          )}
         </div>
         <div className="min-w-0">
           <div className="truncate text-sm font-semibold text-slate-100">{element.name}</div>
@@ -65,6 +73,15 @@ const levelLabels: Record<C4View["level"], string> = {
 };
 
 const lifecycleOptions: Array<C4Lifecycle | "all"> = ["all", "live", "normal", "test", "deprecated"];
+const flowOptions = [
+  { id: "all", label: "All flows" },
+  { id: "critical", label: "Critical" },
+  { id: "user-flow", label: "User" },
+  { id: "storage-flow", label: "Storage" },
+  { id: "security-flow", label: "Security" },
+  { id: "observability-flow", label: "Observability" },
+] as const;
+type FlowFilter = (typeof flowOptions)[number]["id"];
 
 function isBoundaryNode(node: Node): node is Node<{ childIds: string[]; label: string; count: number }> {
   return node.type === "boundary";
@@ -99,14 +116,21 @@ export function GraphCanvas({
   const [selectedRelationship, setSelectedRelationship] = useState<C4Relationship | null>(null);
   const [query, setQuery] = useState("");
   const [lifecycleFilter, setLifecycleFilter] = useState<C4Lifecycle | "all">("all");
+  const [zoneFilter, setZoneFilter] = useState("all");
+  const [flowFilter, setFlowFilter] = useState<FlowFilter>("all");
   const [flow, setFlow] = useState<ReactFlowInstance | null>(null);
+  const zoneOptions = useMemo(
+    () => ["all", ...Array.from(new Set(view.elements.map((element) => element.zone ?? "core"))).sort()],
+    [view.elements],
+  );
 
   const filteredElements = useMemo(
     () =>
       view.elements.filter((element) =>
-        lifecycleFilter === "all" ? true : element.lifecycle === lifecycleFilter,
+        (lifecycleFilter === "all" ? true : element.lifecycle === lifecycleFilter) &&
+        (zoneFilter === "all" ? true : (element.zone ?? "core") === zoneFilter),
       ),
-    [lifecycleFilter, view.elements],
+    [lifecycleFilter, view.elements, zoneFilter],
   );
   const visibleElementIds = useMemo(() => new Set(filteredElements.map((element) => element.id)), [filteredElements]);
   const queryMatches = useMemo(
@@ -148,6 +172,16 @@ export function GraphCanvas({
     () =>
       edges
         .filter((edge) => visibleElementIds.has(edge.source) && visibleElementIds.has(edge.target))
+        .filter((edge) => {
+          const relationship = (edge.data as { relationship: C4Relationship }).relationship;
+          if (flowFilter === "all") return true;
+          if (flowFilter === "critical") {
+            return relationship.tags.some((tag) =>
+              ["user-flow", "security-flow", "storage-flow", "gitops-flow", "backup-flow"].includes(tag),
+            );
+          }
+          return relationship.tags.includes(flowFilter);
+        })
         .map((edge) => {
           const relationship = (edge.data as { relationship: C4Relationship }).relationship;
           const isImpact =
@@ -159,7 +193,7 @@ export function GraphCanvas({
             animated: Boolean(isImpact),
           };
         }),
-    [edges, selectedElement, visibleElementIds],
+    [edges, flowFilter, selectedElement, visibleElementIds],
   );
   const searchResults = useMemo(
     () => filteredElements.filter((element) => matchesQuery(element, query)).slice(0, 8),
@@ -208,7 +242,9 @@ export function GraphCanvas({
         <div className="absolute left-6 top-6 z-10 w-[min(680px,calc(100%-48px))] rounded-2xl border border-white/10 bg-slate-950/75 p-4 shadow-2xl backdrop-blur">
           <div className="flex items-center gap-3">
             <LifecycleBadge lifecycle={view.lifecycle} />
-            <span className="text-sm text-slate-400">{levelLabels[view.level]} · {view.elements.length} elements · {view.relationships.length} links</span>
+            <span className="text-sm text-slate-400">
+              {levelLabels[view.level]} · {visibleNodes.filter((node) => !isBoundaryNode(node)).length}/{view.elements.length} elements · {visibleEdges.length}/{view.relationships.length} links
+            </span>
             <span className={`ml-auto rounded-full border px-2 py-0.5 text-[11px] ${loadSource === "live" ? "border-emerald-400/30 bg-emerald-400/10 text-emerald-200" : "border-amber-400/30 bg-amber-400/10 text-amber-200"}`}>
               {loadSource === "live" ? "live" : "fixture"}
             </span>
@@ -260,6 +296,34 @@ export function GraphCanvas({
             >
               {lifecycleOptions.map((option) => (
                 <option key={option} value={option}>{option === "all" ? "All lifecycles" : option}</option>
+              ))}
+            </select>
+          </div>
+          <div className="mt-3 grid gap-2 md:grid-cols-[1fr_170px]">
+            <div className="flex gap-2 overflow-x-auto rounded-2xl border border-white/10 bg-slate-900/45 p-2">
+              {zoneOptions.map((zone) => (
+                <button
+                  key={zone}
+                  type="button"
+                  onClick={() => setZoneFilter(zone)}
+                  className={clsx(
+                    "whitespace-nowrap rounded-xl px-3 py-1.5 text-xs font-semibold transition",
+                    zoneFilter === zone
+                      ? "bg-sky-400/15 text-sky-100 ring-1 ring-sky-300/30"
+                      : "text-slate-400 hover:bg-white/5 hover:text-slate-100",
+                  )}
+                >
+                  {zone === "all" ? "All zones" : zone}
+                </button>
+              ))}
+            </div>
+            <select
+              value={flowFilter}
+              onChange={(event) => setFlowFilter(event.target.value as FlowFilter)}
+              className="rounded-xl border border-white/10 bg-slate-900/80 px-3 py-2 text-sm text-slate-200 outline-none"
+            >
+              {flowOptions.map((option) => (
+                <option key={option.id} value={option.id}>{option.label}</option>
               ))}
             </select>
           </div>
