@@ -58,11 +58,11 @@ export default function AppInternalsPage() {
 
   return (
     <AppShell>
-      <section className="mx-auto max-w-7xl px-6 py-10">
+      <section className="mx-auto max-w-[1760px] px-6 py-10">
         <AppHeader element={element} />
-        <div className="mt-8 grid gap-5 xl:grid-cols-[1.1fr_0.9fr]">
+        <div className="mt-8 grid gap-5 2xl:grid-cols-[minmax(420px,0.72fr)_minmax(760px,1.28fr)]">
           <Card title="Runtime">
-            <div className="grid gap-3 md:grid-cols-2">
+            <div className="grid gap-3 sm:grid-cols-2 2xl:grid-cols-1">
               <Meta label="Kind" value={element.app.kind} />
               <Meta label="Replicas" value={String(element.app.replicas ?? "n/a")} />
               <Meta label="Health" value={`${healthLabel(healthState(element))} · ${element.app.health?.readyReplicas ?? "?"}/${element.app.health?.desiredReplicas ?? "?"} ready`} />
@@ -74,7 +74,7 @@ export default function AppInternalsPage() {
             <EgoGraph element={element} relationships={relationships} elementById={elementById} />
           </Card>
         </div>
-        <div className="mt-5 grid gap-5 xl:grid-cols-[0.9fr_1.2fr_0.9fr]">
+        <div className="mt-5 grid gap-5 2xl:grid-cols-[minmax(360px,0.75fr)_minmax(760px,1.5fr)_minmax(360px,0.75fr)]">
           <Card title="Containers">
             <Stack items={element.app.containers.map((container) => ({
               title: container.name,
@@ -124,7 +124,7 @@ function AppHeader({ element }: { element: C4Element }) {
               {healthLabel(health)}
             </span>
           </div>
-          <h1 className="text-4xl font-semibold tracking-[-0.04em] text-slate-50">{element.name}</h1>
+          <h1 className="break-words text-4xl font-semibold tracking-[-0.04em] text-slate-50">{element.name}</h1>
           <p className="mt-3 max-w-3xl text-sm leading-6 text-slate-400">{element.description ?? "Runtime and configuration read model exported from Kubernetes."}</p>
         </div>
         <Link href="/views/L2_AllContainers" className="rounded-xl border border-white/10 px-3 py-2 text-sm font-semibold text-slate-300 hover:bg-white/5">
@@ -147,11 +147,11 @@ function EgoGraph({
   const incoming = relationships.filter((relationship) => relationship.targetId === element.id);
   const outgoing = relationships.filter((relationship) => relationship.sourceId === element.id);
   return (
-    <div className="grid gap-3 md:grid-cols-[1fr_auto_1fr]">
+    <div className="grid min-w-0 gap-4 xl:grid-cols-[minmax(280px,1fr)_220px_minmax(280px,1fr)]">
       <ConnectionColumn title="Incoming" relationships={incoming} elementById={elementById} side="source" />
       <div className="flex items-center justify-center">
-        <div className="rounded-2xl border border-sky-300/30 bg-sky-400/10 px-4 py-3 text-center">
-          <div className="text-sm font-semibold text-sky-100">{element.app?.name ?? element.name}</div>
+        <div className="w-full rounded-2xl border border-sky-300/30 bg-sky-400/10 px-4 py-3 text-center">
+          <div className="break-words text-sm font-semibold text-sky-100">{element.app?.name ?? element.name}</div>
           <div className="mt-1 text-xs text-slate-500">{relationships.length} links</div>
         </div>
       </div>
@@ -172,20 +172,20 @@ function ConnectionColumn({
   side: "source" | "target";
 }) {
   return (
-    <div>
+    <div className="min-w-0">
       <div className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">{title}</div>
-      <div className="mt-2 space-y-2">
+      <div className="mt-2 max-h-[21rem] space-y-2 overflow-auto pr-1">
         {relationships.length === 0 ? <p className="rounded-xl border border-dashed border-slate-700 p-3 text-xs text-slate-500">No links.</p> : null}
         {relationships.map((relationship) => {
           const neighbor = elementById.get(side === "source" ? relationship.sourceId : relationship.targetId);
           const kind = flowKind(relationship);
           return (
             <div key={relationship.id} className="rounded-xl border border-white/10 bg-white/[0.03] p-3">
-              <div className="flex items-center gap-2">
-                <span className="h-2 w-8 rounded-full" style={{ background: flowColor(kind) }} />
+              <div className="flex min-w-0 items-center gap-2">
+                <span className="h-2 w-8 shrink-0 rounded-full" style={{ background: flowColor(kind) }} />
                 <span className="truncate text-sm font-medium text-slate-200">{neighbor?.name ?? "Unknown"}</span>
               </div>
-              <div className="mt-1 text-xs text-slate-500">{relationship.description ?? relationship.technology ?? kind}</div>
+              <div className="mt-1 line-clamp-2 text-xs text-slate-500">{relationship.description ?? relationship.technology ?? kind}</div>
             </div>
           );
         })}
@@ -197,24 +197,53 @@ function ConnectionColumn({
 function ConfigMatrix({ element }: { element: C4Element }) {
   const app = element.app;
   if (!app) return null;
-  const configItems = [
-    ...app.configMaps.map((configMap) => ({
-      title: `ConfigMap/${configMap.name}`,
-      lines: [
-        configMap.keys.join(", ") || "no keys",
-        configMap.redacted ? "values redacted by policy" : "values allowlisted",
-        ...(configMap.data ? Object.entries(configMap.data).map(([key, value]) => `${key}: ${value}`) : []),
-      ],
-    })),
-    ...app.containers.flatMap((container) => [
-      { title: `Env/${container.name}`, lines: container.env.length ? container.env : ["no env vars"] },
-      ...container.envFromConfigMaps.map((name) => ({ title: `envFrom ConfigMap/${name}`, lines: ["keys exposed through workload spec"] })),
-      ...container.envFromSecrets.map((name) => ({ title: `envFrom Secret/${name}`, lines: ["reference only; values never exported"] })),
-      ...container.configMapRefs.map((name) => ({ title: `ConfigMap key/${name}`, lines: ["reference only unless allowlisted"] })),
-      ...container.secretRefs.map((name) => ({ title: `Secret/${name}`, lines: ["reference only; values never exported"] })),
-    ]),
-  ];
-  return <Stack items={configItems} />;
+  const configRefs = app.containers.flatMap((container) => [
+    { title: `Env/${container.name}`, lines: container.env.length ? container.env : ["no env vars"] },
+    ...container.envFromConfigMaps.map((name) => ({ title: `envFrom ConfigMap/${name}`, lines: ["keys exposed through workload spec"] })),
+    ...container.envFromSecrets.map((name) => ({ title: `envFrom Secret/${name}`, lines: ["reference only; values never exported"] })),
+    ...container.configMapRefs.map((name) => ({ title: `ConfigMap key/${name}`, lines: ["reference only unless allowlisted"] })),
+    ...container.secretRefs.map((name) => ({ title: `Secret/${name}`, lines: ["reference only; values never exported"] })),
+  ]);
+
+  return (
+    <div className="space-y-4">
+      <div className="grid gap-3 xl:grid-cols-2">
+        {app.configMaps.map((configMap) => (
+          <section key={configMap.name} className="min-w-0 rounded-2xl border border-white/10 bg-white/[0.03] p-3">
+            <div className="flex min-w-0 items-start justify-between gap-3">
+              <div className="min-w-0">
+                <h3 className="truncate text-sm font-semibold text-slate-200">ConfigMap/{configMap.name}</h3>
+                <p className="mt-1 text-xs text-slate-500">
+                  {configMap.keys.length} keys · {configMap.redacted ? "values redacted" : "allowlisted values"}
+                </p>
+              </div>
+              <span className="shrink-0 rounded-full border border-white/10 px-2 py-0.5 text-[10px] font-semibold text-slate-400">
+                {configMap.redacted ? "safe" : "read"}
+              </span>
+            </div>
+            <div className="mt-3 flex max-h-24 flex-wrap gap-1.5 overflow-auto">
+              {configMap.keys.map((key) => (
+                <code key={key} className="rounded-lg bg-slate-900/80 px-2 py-1 text-[11px] text-slate-300">{key}</code>
+              ))}
+            </div>
+            {configMap.data ? (
+              <div className="mt-3 space-y-2">
+                {Object.entries(configMap.data).map(([key, value]) => (
+                  <ConfigValue key={key} name={key} value={value} />
+                ))}
+              </div>
+            ) : null}
+          </section>
+        ))}
+      </div>
+      <div>
+        <h3 className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">References</h3>
+        <div className="mt-2 max-h-80 overflow-auto pr-1">
+          <Stack items={configRefs} compact />
+        </div>
+      </div>
+    </div>
+  );
 }
 
 function Card({ title, children }: { title: string; children: ReactNode }) {
@@ -230,12 +259,12 @@ function Meta({ label, value }: { label: string; value: string }) {
   return (
     <div className="rounded-xl border border-white/10 bg-white/[0.03] p-3">
       <div className="text-xs text-slate-500">{label}</div>
-      <div className="mt-1 break-words text-sm text-slate-200">{value}</div>
+      <div className="mt-1 break-words text-sm leading-5 text-slate-200">{value}</div>
     </div>
   );
 }
 
-function Stack({ items }: { items: Array<{ title: string; lines: string[] }> }) {
+function Stack({ items, compact = false }: { items: Array<{ title: string; lines: string[] }>; compact?: boolean }) {
   if (items.length === 0) {
     return <p className="rounded-xl border border-dashed border-slate-700 p-3 text-sm text-slate-500">No data exported.</p>;
   }
@@ -243,13 +272,24 @@ function Stack({ items }: { items: Array<{ title: string; lines: string[] }> }) 
   return (
     <div className="space-y-2">
       {items.map((item) => (
-        <div key={item.title} className="rounded-xl border border-white/10 bg-white/[0.03] p-3">
-          <div className="text-sm font-medium text-slate-200">{item.title}</div>
-          {item.lines.map((line) => (
-            <div key={line} className="mt-1 break-words text-xs text-slate-500">{line}</div>
+        <div key={item.title} className={`min-w-0 rounded-xl border border-white/10 bg-white/[0.03] ${compact ? "p-2.5" : "p-3"}`}>
+          <div className="break-words text-sm font-medium text-slate-200">{item.title}</div>
+          {item.lines.slice(0, compact ? 6 : 4).map((line) => (
+            <div key={line} className="mt-1 break-words text-xs leading-5 text-slate-500">{line}</div>
           ))}
+          {item.lines.length > (compact ? 6 : 4) ? <div className="mt-1 text-[11px] text-slate-600">+{item.lines.length - (compact ? 6 : 4)} more</div> : null}
         </div>
       ))}
     </div>
+  );
+}
+
+function ConfigValue({ name, value }: { name: string; value: string }) {
+  const isLong = value.length > 180 || value.includes("\n");
+  return (
+    <details className="rounded-xl border border-slate-800 bg-slate-950/70 p-2" open={!isLong}>
+      <summary className="cursor-pointer truncate text-xs font-semibold text-slate-300">{name}</summary>
+      <pre className="mt-2 max-h-56 overflow-auto whitespace-pre-wrap break-words rounded-lg bg-black/20 p-2 text-[11px] leading-5 text-slate-400">{value}</pre>
+    </details>
   );
 }
