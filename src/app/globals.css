@@ -109,22 +109,23 @@ body {
   box-shadow: 0 0 0 3px rgba(15, 23, 42, 0.9), 0 0 14px currentColor;
 }
 
-.c4-health-healthy {
+/* Scope health colors to the dot element only — prevents flooding node wrapper background */
+.c4-health-dot.c4-health-healthy {
   color: #34d399;
   background: #34d399;
 }
 
-.c4-health-degraded {
+.c4-health-dot.c4-health-degraded {
   color: #f59e0b;
   background: #f59e0b;
 }
 
-.c4-health-down {
+.c4-health-dot.c4-health-down {
   color: #fb7185;
   background: #fb7185;
 }
 
-.c4-health-unknown {
+.c4-health-dot.c4-health-unknown {
   color: #64748b;
   background: #64748b;
 }

@@ -300,20 +300,27 @@ export function GraphCanvas({
             ? node.data.childIds.some((childId) => visibleElementIds.has(childId))
             : visibleElementIds.has(node.id),
         )
-        .map((node) => ({
-          ...node,
-          data: isBoundaryNode(node) ? node.data : { ...node.data, density },
-          className: isBoundaryNode(node)
-            ? "c4-boundary"
-            : clsx("c4-node", `c4-role-${nodeRole((node.data as { element: C4Element }).element)}`, `c4-zone-${zoneKey((node.data as { element: C4Element }).element)}`, `c4-health-${healthState((node.data as { element: C4Element }).element)}`, {
-                "c4-node-dimmed": query.trim() && !queryMatches.has(node.id),
-                "c4-node-match": query.trim() && queryMatches.has(node.id),
-                "c4-node-impact": impactElementIds.has(node.id),
-                "c4-node-selected": selectedElement?.id === node.id,
-                // hover isolation: dim nodes not connected to the hovered node
-                "c4-node-hover-dim": hoverNeighborIds !== null && !hoverNeighborIds.has(node.id),
-              }),
-        })),
+        .map((node) => {
+          if (isBoundaryNode(node)) {
+            const accent = zoneColor(node.data.label);
+            return { ...node, data: node.data, className: "c4-boundary", style: { ...node.style, "--c4-accent": accent } as CSSProperties };
+          }
+          const element = (node.data as { element: C4Element }).element;
+          const accent = zoneColor(element);
+          return {
+            ...node,
+            data: { ...node.data, density },
+            style: { ...node.style, "--c4-accent": accent } as CSSProperties,
+            className: clsx("c4-node", `c4-role-${nodeRole(element)}`, `c4-zone-${zoneKey(element)}`, `c4-health-${healthState(element)}`, {
+              "c4-node-dimmed": query.trim() && !queryMatches.has(node.id),
+              "c4-node-match": query.trim() && queryMatches.has(node.id),
+              "c4-node-impact": impactElementIds.has(node.id),
+              "c4-node-selected": selectedElement?.id === node.id,
+              // hover isolation: dim nodes not connected to the hovered node
+              "c4-node-hover-dim": hoverNeighborIds !== null && !hoverNeighborIds.has(node.id),
+            }),
+          };
+        }),
     [density, hoverNeighborIds, impactElementIds, nodes, query, queryMatches, selectedElement?.id, visibleElementIds],
   );
   const visibleEdges = useMemo(
