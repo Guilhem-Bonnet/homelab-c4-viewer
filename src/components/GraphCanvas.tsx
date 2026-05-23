@@ -28,6 +28,7 @@ import { LifecycleBadge } from "./LifecycleBadge";
 
 type DensityMode = "compact" | "normal" | "detail";
 type LabelMode = "focus" | "hover" | "always";
+type EdgeRoutingMode = "auto" | "orthogonal" | "straight" | "smooth";
 type LayerId = "apps" | "storage" | "security" | "observability" | "external";
 
 function HealthDot({ state }: { state: HealthState }) {
@@ -115,20 +116,28 @@ type ArchitectureEdgeData = {
   isImpact?: boolean;
   labelMode?: LabelMode;
   isFocusConnected?: boolean;
+  routing?: Exclude<EdgeRoutingMode, "auto">;
 };
 
 function ArchitectureEdge(props: EdgeProps<Edge<ArchitectureEdgeData>>) {
   const laneOffset = props.data?.laneOffset ?? 0;
   const kind = props.data?.flowKind ?? "service";
   const color = flowColor(kind);
-  const dx = Math.max(96, Math.abs(props.targetX - props.sourceX) * 0.42);
-  const c1x = props.sourceX + dx;
-  const c2x = props.targetX - dx;
-  const c1y = props.sourceY + laneOffset;
-  const c2y = props.targetY + laneOffset;
-  const path = `M ${props.sourceX},${props.sourceY} C ${c1x},${c1y} ${c2x},${c2y} ${props.targetX},${props.targetY}`;
+  const routing = props.data?.routing ?? "orthogonal";
+  const midX = (props.sourceX + props.targetX) / 2;
+  const midY = (props.sourceY + props.targetY) / 2 + laneOffset;
+  const path = (() => {
+    if (routing === "straight") {
+      return `M ${props.sourceX},${props.sourceY} L ${props.targetX},${props.targetY}`;
+    }
+    if (routing === "smooth") {
+      const dx = Math.max(96, Math.abs(props.targetX - props.sourceX) * 0.42);
+      return `M ${props.sourceX},${props.sourceY} C ${props.sourceX + dx},${props.sourceY + laneOffset} ${props.targetX - dx},${props.targetY + laneOffset} ${props.targetX},${props.targetY}`;
+    }
+    return `M ${props.sourceX},${props.sourceY} L ${midX},${props.sourceY} L ${midX},${props.targetY + laneOffset} L ${props.targetX},${props.targetY}`;
+  })();
   const labelX = (props.sourceX + props.targetX) / 2;
-  const labelY = (props.sourceY + props.targetY) / 2 + laneOffset;
+  const labelY = midY;
   const label = props.label ?? props.data?.relationship.description;
   const showLabel =
     props.data?.labelMode === "always" ||
@@ -201,6 +210,12 @@ const labelOptions: Array<{ id: LabelMode; label: string }> = [
   { id: "hover", label: "Labels subtle" },
   { id: "always", label: "Labels always" },
 ];
+const routingOptions: Array<{ id: EdgeRoutingMode; label: string }> = [
+  { id: "auto", label: "Routing auto" },
+  { id: "orthogonal", label: "Angles" },
+  { id: "straight", label: "Straight" },
+  { id: "smooth", label: "Curves" },
+];
 
 function isBoundaryNode(node: Node): node is Node<{ childIds: string[]; label: string; count: number }> {
   return node.type === "boundary";
@@ -241,6 +256,7 @@ export function GraphCanvas({
   const [flowFilter, setFlowFilter] = useState<FlowFilter>("all");
   const [density, setDensity] = useState<DensityMode>("normal");
   const [labelMode, setLabelMode] = useState<LabelMode>("focus");
+  const [routingMode, setRoutingMode] = useState<EdgeRoutingMode>("auto");
   const [activeLayers, setActiveLayers] = useState<Record<LayerId, boolean>>({
     apps: true,
     storage: true,
@@ -250,6 +266,9 @@ export function GraphCanvas({
   });
   const [flow, setFlow] = useState<ReactFlowInstance | null>(null);
   const isDenseView = view.elements.length > 42 || view.relationships.length > 70;
+  const effectiveRouting: Exclude<EdgeRoutingMode, "auto"> = routingMode === "auto"
+    ? isDenseView ? "orthogonal" : "smooth"
+    : routingMode;
   const focusNeighborIds = useMemo((): Set<string> | null => {
     if (selectedRelationship) return new Set([selectedRelationship.sourceId, selectedRelationship.targetId]);
     if (!selectedElement) return null;
@@ -354,10 +373,16 @@ export function GraphCanvas({
               "c4-edge-focus-active": isImpact,
             }),
             animated: Boolean(isImpact) && !isDenseView,
-            data: { ...(edge.data as ArchitectureEdgeData), isImpact: Boolean(isImpact), labelMode, isFocusConnected: Boolean(isImpact) },
+            data: {
+              ...(edge.data as ArchitectureEdgeData),
+              isImpact: Boolean(isImpact),
+              labelMode,
+              isFocusConnected: Boolean(isImpact),
+              routing: effectiveRouting,
+            },
           };
         }),
-    [edges, flowFilter, isDenseView, labelMode, selectedElement, selectedRelationship, visibleElementIds],
+    [edges, effectiveRouting, flowFilter, isDenseView, labelMode, selectedElement, selectedRelationship, visibleElementIds],
   );
   const searchResults = useMemo(
     () => filteredElements.filter((element) => matchesQuery(element, query)).slice(0, 8),
@@ -410,7 +435,7 @@ export function GraphCanvas({
   }
 
   return (
-    <div className="grid h-[calc(100vh-73px)] grid-cols-[1fr_360px]">
+    <div className={clsx("grid h-[calc(100vh-73px)] grid-cols-[1fr_360px]", isDenseView && "c4-dense-view")}>
       <section className="relative">
         <div className="absolute left-6 top-6 z-10 max-h-[calc(100vh-150px)] w-[min(560px,calc(100%-48px))] overflow-auto rounded-2xl border border-white/10 bg-slate-950/82 p-4 shadow-2xl backdrop-blur">
           <div className="flex items-center gap-3">
@@ -442,6 +467,11 @@ export function GraphCanvas({
           <p className="mt-1 text-xs text-slate-500">
             Clic sur un élément = focus stable sur ses flux. Clic dans le vide = reset.
           </p>
+          {isDenseView ? (
+            <p className="mt-2 rounded-xl border border-amber-400/15 bg-amber-400/10 px-3 py-2 text-xs text-amber-100">
+              Dense mode actif: routing en angles, animations coupées, effets visuels allégés.
+            </p>
+          ) : null}
           <div className="mt-4 rounded-2xl border border-white/10 bg-slate-900/55 p-2">
             <div className="mb-2 px-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-500">Navigation</div>
             <div className="flex flex-wrap gap-2">
@@ -567,8 +597,20 @@ export function GraphCanvas({
                     <option key={option.id} value={option.id}>{option.label}</option>
                   ))}
                 </select>
+                <select
+                  value={routingMode}
+                  onChange={(event) => setRoutingMode(event.target.value as EdgeRoutingMode)}
+                  className="rounded-xl border border-white/10 bg-slate-950/80 px-3 py-2 text-xs text-slate-200 outline-none"
+                >
+                  {routingOptions.map((option) => (
+                    <option key={option.id} value={option.id}>{option.label}</option>
+                  ))}
+                </select>
               </div>
             </div>
+            <p className="mt-2 text-[11px] text-slate-500">
+              Routing actif: {effectiveRouting === "orthogonal" ? "angles droits (plus lisible/perf)" : effectiveRouting}.
+            </p>
             <div className="mt-3 grid gap-2 sm:grid-cols-2">
               {layerOptions.map((layer) => (
                 <button
@@ -656,17 +698,19 @@ export function GraphCanvas({
               </button>
             </div>
           </Panel>
-          <MiniMap
-            pannable
-            zoomable
-            nodeStrokeWidth={3}
-            nodeColor={(node) => {
-              if (isBoundaryNode(node)) return "rgba(15, 23, 42, 0.2)";
-              return zoneColor((node.data as { element: C4Element }).element);
-            }}
-            nodeStrokeColor="rgba(186, 230, 253, 0.75)"
-            maskColor="rgba(2, 6, 23, 0.58)"
-          />
+          {!isDenseView ? (
+            <MiniMap
+              pannable
+              zoomable
+              nodeStrokeWidth={3}
+              nodeColor={(node) => {
+                if (isBoundaryNode(node)) return "rgba(15, 23, 42, 0.2)";
+                return zoneColor((node.data as { element: C4Element }).element);
+              }}
+              nodeStrokeColor="rgba(186, 230, 253, 0.75)"
+              maskColor="rgba(2, 6, 23, 0.58)"
+            />
+          ) : null}
           <Controls showInteractive={false} />
         </ReactFlow>
       </section>

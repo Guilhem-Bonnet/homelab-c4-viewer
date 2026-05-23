@@ -213,6 +213,11 @@ body {
   filter: drop-shadow(0 0 6px color-mix(in srgb, currentColor 20%, transparent));
 }
 
+.c4-dense-view .c4-edge,
+.c4-dense-view .c4-edge-impact {
+  filter: none;
+}
+
 .c4-edge-deprecated {
   stroke: #64748b !important;
   stroke-width: 2;
@@ -272,6 +277,11 @@ body {
   transform-origin: center;
   transition: opacity 140ms ease, background 140ms ease;
   backdrop-filter: blur(10px);
+}
+
+.c4-dense-view .c4-edge-label {
+  backdrop-filter: none;
+  transition: none;
 }
 
 .c4-edge-label-visible {
