@@ -114,7 +114,7 @@ type ArchitectureEdgeData = {
   flowKind?: FlowKind;
   isImpact?: boolean;
   labelMode?: LabelMode;
-  isHoverConnected?: boolean;
+  isFocusConnected?: boolean;
 };
 
 function ArchitectureEdge(props: EdgeProps<Edge<ArchitectureEdgeData>>) {
@@ -130,10 +130,9 @@ function ArchitectureEdge(props: EdgeProps<Edge<ArchitectureEdgeData>>) {
   const labelX = (props.sourceX + props.targetX) / 2;
   const labelY = (props.sourceY + props.targetY) / 2 + laneOffset;
   const label = props.label ?? props.data?.relationship.description;
-  // show label when: always mode, or this edge connects to the hovered node, or it connects to the selected element
   const showLabel =
     props.data?.labelMode === "always" ||
-    props.data?.isHoverConnected ||
+    (props.data?.labelMode === "hover" && props.data?.isFocusConnected) ||
     props.data?.isImpact;
 
   return (
@@ -234,7 +233,7 @@ export function GraphCanvas({
   generatedAt?: string;
 }) {
   const { nodes, edges } = useMemo(() => toFlow(view), [view]);
-  const [selectedElement, setSelectedElement] = useState<C4Element | null>(view.elements[0] ?? null);
+  const [selectedElement, setSelectedElement] = useState<C4Element | null>(null);
   const [selectedRelationship, setSelectedRelationship] = useState<C4Relationship | null>(null);
   const [query, setQuery] = useState("");
   const [lifecycleFilter, setLifecycleFilter] = useState<C4Lifecycle | "all">("all");
@@ -250,17 +249,17 @@ export function GraphCanvas({
     external: true,
   });
   const [flow, setFlow] = useState<ReactFlowInstance | null>(null);
-  const [hoveredId, setHoveredId] = useState<string | null>(null);
-  // Set of node ids that should stay fully visible during hover isolation
-  const hoverNeighborIds = useMemo((): Set<string> | null => {
-    if (!hoveredId) return null;
+  const isDenseView = view.elements.length > 42 || view.relationships.length > 70;
+  const focusNeighborIds = useMemo((): Set<string> | null => {
+    if (selectedRelationship) return new Set([selectedRelationship.sourceId, selectedRelationship.targetId]);
+    if (!selectedElement) return null;
     return new Set([
-      hoveredId,
+      selectedElement.id,
       ...view.relationships
-        .filter((r) => r.sourceId === hoveredId || r.targetId === hoveredId)
+        .filter((r) => r.sourceId === selectedElement.id || r.targetId === selectedElement.id)
         .flatMap((r) => [r.sourceId, r.targetId]),
     ]);
-  }, [hoveredId, view.relationships]);
+  }, [selectedElement, selectedRelationship, view.relationships]);
   const zoneOptions = useMemo(
     () => ["all", ...Array.from(new Set(view.elements.map((element) => element.zone ?? "core"))).sort()],
     [view.elements],
@@ -285,6 +284,7 @@ export function GraphCanvas({
     [filteredElements, query],
   );
   const impactElementIds = useMemo(() => {
+    if (selectedRelationship) return new Set([selectedRelationship.sourceId, selectedRelationship.targetId]);
     if (!selectedElement) return new Set<string>();
     return new Set([
       selectedElement.id,
@@ -292,7 +292,7 @@ export function GraphCanvas({
         .filter((relationship) => relationship.sourceId === selectedElement.id || relationship.targetId === selectedElement.id)
         .flatMap((relationship) => [relationship.sourceId, relationship.targetId]),
     ]);
-  }, [selectedElement, view.relationships]);
+  }, [selectedElement, selectedRelationship, view.relationships]);
 
   const visibleNodes = useMemo(
     () =>
@@ -318,12 +318,11 @@ export function GraphCanvas({
               "c4-node-match": query.trim() && queryMatches.has(node.id),
               "c4-node-impact": impactElementIds.has(node.id),
               "c4-node-selected": selectedElement?.id === node.id,
-              // hover isolation: dim nodes not connected to the hovered node
-              "c4-node-hover-dim": hoverNeighborIds !== null && !hoverNeighborIds.has(node.id),
+              "c4-node-focus-dim": focusNeighborIds !== null && !focusNeighborIds.has(node.id),
             }),
           };
         }),
-    [density, hoverNeighborIds, impactElementIds, nodes, query, queryMatches, selectedElement?.id, visibleElementIds],
+    [density, focusNeighborIds, impactElementIds, nodes, query, queryMatches, selectedElement?.id, visibleElementIds],
   );
   const visibleEdges = useMemo(
     () =>
@@ -341,25 +340,24 @@ export function GraphCanvas({
         })
         .map((edge) => {
           const relationship = (edge.data as { relationship: C4Relationship }).relationship;
-          const isImpact =
-            selectedElement &&
+          const isElementImpact =
+            selectedElement !== null &&
             (relationship.sourceId === selectedElement.id || relationship.targetId === selectedElement.id);
-          const isHoverConnected =
-            hoveredId !== null &&
-            (relationship.sourceId === hoveredId || relationship.targetId === hoveredId);
+          const isRelationshipImpact = selectedRelationship?.id === relationship.id;
+          const isImpact = isElementImpact || isRelationshipImpact;
+          const hasFocus = selectedElement !== null || selectedRelationship !== null;
           return {
             ...edge,
             className: clsx(edge.className, {
               "c4-edge-impact": isImpact,
-              // hover isolation: dim unrelated edges, highlight connected ones
-              "c4-edge-hover-dim": hoveredId !== null && !isHoverConnected,
-              "c4-edge-hover-active": isHoverConnected,
+              "c4-edge-focus-dim": hasFocus && !isImpact,
+              "c4-edge-focus-active": isImpact,
             }),
-            animated: Boolean(isImpact),
-            data: { ...(edge.data as ArchitectureEdgeData), isImpact: Boolean(isImpact), labelMode, isHoverConnected: Boolean(isHoverConnected) },
+            animated: Boolean(isImpact) && !isDenseView,
+            data: { ...(edge.data as ArchitectureEdgeData), isImpact: Boolean(isImpact), labelMode, isFocusConnected: Boolean(isImpact) },
           };
         }),
-    [edges, flowFilter, hoveredId, labelMode, selectedElement, visibleElementIds],
+    [edges, flowFilter, isDenseView, labelMode, selectedElement, selectedRelationship, visibleElementIds],
   );
   const searchResults = useMemo(
     () => filteredElements.filter((element) => matchesQuery(element, query)).slice(0, 8),
@@ -406,10 +404,15 @@ export function GraphCanvas({
     setSelectedRelationship((edge.data as { relationship: C4Relationship }).relationship);
   }
 
+  function clearFocus() {
+    setSelectedElement(null);
+    setSelectedRelationship(null);
+  }
+
   return (
     <div className="grid h-[calc(100vh-73px)] grid-cols-[1fr_360px]">
       <section className="relative">
-        <div className="absolute left-6 top-6 z-10 max-h-[calc(100vh-150px)] w-[min(760px,calc(100%-48px))] overflow-auto rounded-2xl border border-white/10 bg-slate-950/80 p-4 shadow-2xl backdrop-blur">
+        <div className="absolute left-6 top-6 z-10 max-h-[calc(100vh-150px)] w-[min(560px,calc(100%-48px))] overflow-auto rounded-2xl border border-white/10 bg-slate-950/82 p-4 shadow-2xl backdrop-blur">
           <div className="flex items-center gap-3">
             <LifecycleBadge lifecycle={view.lifecycle} />
             <span className="text-sm text-slate-400">
@@ -435,8 +438,13 @@ export function GraphCanvas({
               </span>
             )}
           </div>
-          <h1 className="mt-2 text-2xl font-semibold tracking-tight text-slate-100">{view.title}</h1>
-          <div className="mt-4 flex flex-wrap gap-2 rounded-2xl border border-white/10 bg-slate-900/55 p-2">
+          <h1 className="mt-2 text-xl font-semibold tracking-tight text-slate-100">{view.title}</h1>
+          <p className="mt-1 text-xs text-slate-500">
+            Clic sur un élément = focus stable sur ses flux. Clic dans le vide = reset.
+          </p>
+          <div className="mt-4 rounded-2xl border border-white/10 bg-slate-900/55 p-2">
+            <div className="mb-2 px-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-500">Navigation</div>
+            <div className="flex flex-wrap gap-2">
             <Link
               href="/"
               className="inline-flex items-center gap-1.5 rounded-xl px-3 py-1.5 text-xs font-medium text-slate-400 hover:bg-white/5 hover:text-slate-100"
@@ -464,8 +472,21 @@ export function GraphCanvas({
                 </span>
               ),
             )}
+            </div>
           </div>
-          <div className="mt-4 grid gap-3 md:grid-cols-[1fr_150px]">
+          <div className="mt-4 rounded-2xl border border-white/10 bg-slate-900/45 p-3">
+            <div className="mb-2 flex items-center justify-between gap-2">
+              <div>
+                <div className="text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-500">Recherche & filtres</div>
+                <p className="mt-1 text-xs text-slate-500">Réduis le graphe avant de lire les câbles.</p>
+              </div>
+              {selectedElement || selectedRelationship ? (
+                <button type="button" onClick={clearFocus} className="rounded-lg border border-white/10 px-2 py-1 text-[11px] text-slate-300 hover:border-sky-400/40 hover:text-sky-100">
+                  Clear focus
+                </button>
+              ) : null}
+            </div>
+            <div className="grid gap-3 md:grid-cols-[1fr_150px]">
             <label className="flex items-center gap-2 rounded-xl border border-white/10 bg-slate-900/80 px-3 py-2 text-sm text-slate-400">
               <Search className="h-4 w-4 text-slate-500" />
               <input
@@ -484,8 +505,11 @@ export function GraphCanvas({
                 <option key={option} value={option}>{option === "all" ? "All lifecycles" : option}</option>
               ))}
             </select>
+            </div>
           </div>
-          <div className="mt-3 grid gap-2 md:grid-cols-[1fr_170px]">
+          <div className="mt-3 rounded-2xl border border-white/10 bg-slate-900/45 p-3">
+            <div className="mb-2 text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-500">Zones & types de flux</div>
+            <div className="grid gap-2 md:grid-cols-[1fr_170px]">
             <div className="flex gap-2 overflow-x-auto rounded-2xl border border-white/10 bg-slate-900/45 p-2">
               {zoneOptions.map((zone) => (
                 <button
@@ -516,6 +540,7 @@ export function GraphCanvas({
                 <option key={option.id} value={option.id}>{option.label}</option>
               ))}
             </select>
+            </div>
           </div>
           <div className="mt-3 rounded-2xl border border-white/10 bg-slate-900/45 p-3">
             <div className="flex flex-wrap items-center justify-between gap-2">
@@ -544,7 +569,7 @@ export function GraphCanvas({
                 </select>
               </div>
             </div>
-            <div className="mt-3 grid gap-2 sm:grid-cols-5">
+            <div className="mt-3 grid gap-2 sm:grid-cols-2">
               {layerOptions.map((layer) => (
                 <button
                   key={layer.id}
@@ -604,8 +629,7 @@ export function GraphCanvas({
           onInit={setFlow}
           onNodeClick={onNodeClick}
           onEdgeClick={onEdgeClick}
-          onNodeMouseEnter={(_e, node) => { if (!isBoundaryNode(node)) setHoveredId(node.id); }}
-          onNodeMouseLeave={() => setHoveredId(null)}
+          onPaneClick={clearFocus}
           fitView
           minZoom={0.08}
           maxZoom={1.8}
@@ -626,6 +650,9 @@ export function GraphCanvas({
               <button type="button" onClick={() => selectedElement && focusElement(selectedElement)} className="c4-tool-button min-w-20" aria-label="Focus selected element">
                 <Waypoints className="h-4 w-4" />
                 Focus
+              </button>
+              <button type="button" onClick={clearFocus} className="c4-tool-button min-w-16" aria-label="Clear focused element">
+                Clear
               </button>
             </div>
           </Panel>
