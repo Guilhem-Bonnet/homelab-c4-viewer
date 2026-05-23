@@ -312,7 +312,14 @@ export function GraphCanvas({
               </button>
             </div>
           </Panel>
-          <MiniMap pannable zoomable nodeStrokeWidth={3} />
+          <MiniMap
+            pannable
+            zoomable
+            nodeStrokeWidth={3}
+            nodeColor="rgba(56, 189, 248, 0.62)"
+            nodeStrokeColor="rgba(186, 230, 253, 0.75)"
+            maskColor="rgba(2, 6, 23, 0.58)"
+          />
           <Controls showInteractive={false} />
         </ReactFlow>
       </section>

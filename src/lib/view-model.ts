@@ -151,8 +151,8 @@ export function toFlow(view: C4View): { nodes: Node[]; edges: Edge[] } {
     className: relationship.lifecycle === "deprecated" ? "c4-edge-deprecated" : "c4-edge",
     labelBgPadding: [8, 4] as [number, number],
     labelBgBorderRadius: 8,
-    labelStyle: { fill: "#cbd5e1", fontWeight: 600, fontSize: 11 },
-    labelBgStyle: { fill: "rgba(2, 6, 23, 0.82)", stroke: "rgba(148, 163, 184, 0.22)" },
+    labelStyle: { fill: "#dbeafe", fontWeight: 450, fontSize: 10.5, letterSpacing: 0.08 },
+    labelBgStyle: { fill: "rgba(15, 23, 42, 0.72)", stroke: "rgba(125, 211, 252, 0.18)" },
     data: { relationship },
   }));
   const nodes = layoutNodes(view, edges);
