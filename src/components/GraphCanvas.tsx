@@ -226,10 +226,12 @@ export function GraphCanvas({
   view,
   allViews = [view],
   loadSource = "live",
+  generatedAt,
 }: {
   view: C4View;
   allViews?: C4View[];
   loadSource?: "live" | "fixture";
+  generatedAt?: string;
 }) {
   const { nodes, edges } = useMemo(() => toFlow(view), [view]);
   const [selectedElement, setSelectedElement] = useState<C4Element | null>(view.elements[0] ?? null);
@@ -416,6 +418,22 @@ export function GraphCanvas({
             <span className={`ml-auto rounded-full border px-2 py-0.5 text-[11px] ${loadSource === "live" ? "border-emerald-400/30 bg-emerald-400/10 text-emerald-200" : "border-amber-400/30 bg-amber-400/10 text-amber-200"}`}>
               {loadSource === "live" ? "live" : "fixture"}
             </span>
+            {generatedAt && (
+              <span
+                className="rounded-full border border-slate-700/50 bg-slate-800/50 px-2 py-0.5 text-[11px] text-slate-400"
+                title={`Généré le ${new Date(generatedAt).toLocaleString("fr-FR")} · Refresh toutes les heures via CronJob`}
+              >
+                {(() => {
+                  const diff = Date.now() - new Date(generatedAt).getTime();
+                  const mins = Math.round(diff / 60000);
+                  if (mins < 2) return "just now";
+                  if (mins < 60) return `${mins}min ago`;
+                  const hrs = Math.round(mins / 60);
+                  return `${hrs}h ago`;
+                })()}
+                {" · "}↻1h
+              </span>
+            )}
           </div>
           <h1 className="mt-2 text-2xl font-semibold tracking-tight text-slate-100">{view.title}</h1>
           <div className="mt-4 flex flex-wrap gap-2 rounded-2xl border border-white/10 bg-slate-900/55 p-2">

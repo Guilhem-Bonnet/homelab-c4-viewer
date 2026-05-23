@@ -34,7 +34,12 @@ export default function ViewPage() {
 
   return (
     <AppShell>
-      <GraphCanvas view={view} allViews={loadResult.model.views} loadSource={loadResult.source} />
+      <GraphCanvas
+        view={view}
+        allViews={loadResult.model.views}
+        loadSource={loadResult.source}
+        generatedAt={loadResult.model.metadata?.generatedAt}
+      />
     </AppShell>
   );
 }
