@@ -46,5 +46,7 @@ export type StructurizrWorkspace = {
     systemLandscapeViews?: StructurizrContainerView[];
     systemContextViews?: StructurizrContainerView[];
     containerViews?: StructurizrContainerView[];
+    componentViews?: StructurizrContainerView[];
+    deploymentViews?: StructurizrContainerView[];
   };
 };

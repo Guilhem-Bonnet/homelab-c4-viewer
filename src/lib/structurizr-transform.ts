@@ -159,6 +159,8 @@ export function normalizeWorkspace(workspace: StructurizrWorkspace, registry: C4
     ...(workspace.views?.systemLandscapeViews ?? []).map((view) => normalizeView(view, "system-landscape")),
     ...(workspace.views?.systemContextViews ?? []).map((view) => normalizeView(view, "system-context")),
     ...(workspace.views?.containerViews ?? []).map((view) => normalizeView(view, "container")),
+    ...(workspace.views?.componentViews ?? []).map((view) => normalizeView(view, "component")),
+    ...(workspace.views?.deploymentViews ?? []).map((view) => normalizeView(view, "deployment")),
   ];
 
   return {

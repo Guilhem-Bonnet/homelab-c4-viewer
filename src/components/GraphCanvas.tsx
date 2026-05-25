@@ -17,7 +17,7 @@ import {
 } from "@xyflow/react";
 import clsx from "clsx";
 import { Crosshair, Layers3, Maximize2, Minus, Plus, Search, Waypoints } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useCallback, useDeferredValue, useMemo, useState, useTransition } from "react";
 import type { CSSProperties } from "react";
 import type { C4Element, C4Lifecycle, C4Relationship, C4View } from "@/types/c4";
 import { Background, NODE_HEIGHT, NODE_WIDTH, iconFor, toFlow } from "@/lib/view-model";
@@ -265,6 +265,8 @@ export function GraphCanvas({
     external: true,
   });
   const [flow, setFlow] = useState<ReactFlowInstance | null>(null);
+  const [, startTransition] = useTransition();
+  const deferredQuery = useDeferredValue(query);
   const isDenseView = view.elements.length > 42 || view.relationships.length > 70;
   const effectiveRouting: Exclude<EdgeRoutingMode, "auto"> = routingMode === "auto"
     ? isDenseView ? "orthogonal" : "smooth"
@@ -299,19 +301,9 @@ export function GraphCanvas({
   );
   const visibleElementIds = useMemo(() => new Set(filteredElements.map((element) => element.id)), [filteredElements]);
   const queryMatches = useMemo(
-    () => new Set(filteredElements.filter((element) => matchesQuery(element, query)).map((element) => element.id)),
-    [filteredElements, query],
+    () => new Set(filteredElements.filter((element) => matchesQuery(element, deferredQuery)).map((element) => element.id)),
+    [filteredElements, deferredQuery],
   );
-  const impactElementIds = useMemo(() => {
-    if (selectedRelationship) return new Set([selectedRelationship.sourceId, selectedRelationship.targetId]);
-    if (!selectedElement) return new Set<string>();
-    return new Set([
-      selectedElement.id,
-      ...view.relationships
-        .filter((relationship) => relationship.sourceId === selectedElement.id || relationship.targetId === selectedElement.id)
-        .flatMap((relationship) => [relationship.sourceId, relationship.targetId]),
-    ]);
-  }, [selectedElement, selectedRelationship, view.relationships]);
 
   const visibleNodes = useMemo(
     () =>
@@ -333,15 +325,15 @@ export function GraphCanvas({
             data: { ...node.data, density },
             style: { ...node.style, "--c4-accent": accent } as CSSProperties,
             className: clsx("c4-node", `c4-role-${nodeRole(element)}`, `c4-zone-${zoneKey(element)}`, `c4-health-${healthState(element)}`, {
-              "c4-node-dimmed": query.trim() && !queryMatches.has(node.id),
-              "c4-node-match": query.trim() && queryMatches.has(node.id),
-              "c4-node-impact": impactElementIds.has(node.id),
+              "c4-node-dimmed": deferredQuery.trim() && !queryMatches.has(node.id),
+              "c4-node-match": deferredQuery.trim() && queryMatches.has(node.id),
+              "c4-node-impact": focusNeighborIds !== null && focusNeighborIds.has(node.id),
               "c4-node-selected": selectedElement?.id === node.id,
               "c4-node-focus-dim": focusNeighborIds !== null && !focusNeighborIds.has(node.id),
             }),
           };
         }),
-    [density, focusNeighborIds, impactElementIds, nodes, query, queryMatches, selectedElement?.id, visibleElementIds],
+    [density, deferredQuery, focusNeighborIds, nodes, queryMatches, selectedElement?.id, visibleElementIds],
   );
   const visibleEdges = useMemo(
     () =>
@@ -385,8 +377,8 @@ export function GraphCanvas({
     [edges, effectiveRouting, flowFilter, isDenseView, labelMode, selectedElement, selectedRelationship, visibleElementIds],
   );
   const searchResults = useMemo(
-    () => filteredElements.filter((element) => matchesQuery(element, query)).slice(0, 8),
-    [filteredElements, query],
+    () => filteredElements.filter((element) => matchesQuery(element, deferredQuery)).slice(0, 8),
+    [filteredElements, deferredQuery],
   );
   const levelViews = useMemo(
     () =>
@@ -400,7 +392,7 @@ export function GraphCanvas({
     [allViews],
   );
 
-  function focusElement(element: C4Element) {
+  const focusElement = useCallback((element: C4Element) => {
     setSelectedRelationship(null);
     setSelectedElement(element);
     const node = flow?.getNode(element.id);
@@ -409,35 +401,35 @@ export function GraphCanvas({
       const height = node.measured?.height ?? node.height ?? NODE_HEIGHT;
       flow?.setCenter(node.position.x + width / 2, node.position.y + height / 2, { zoom: 1.18, duration: 500 });
     }
-  }
+  }, [flow]);
 
-  function fitArchitecture() {
+  const fitArchitecture = useCallback(() => {
     flow?.fitView({ padding: 0.16, duration: 500 });
-  }
+  }, [flow]);
 
-  function toggleLayer(layer: LayerId) {
-    setActiveLayers((current) => ({ ...current, [layer]: !current[layer] }));
-  }
+  const toggleLayer = useCallback((layer: LayerId) => {
+    startTransition(() => setActiveLayers((current) => ({ ...current, [layer]: !current[layer] })));
+  }, [startTransition]);
 
-  function onNodeClick(_: unknown, node: Node) {
+  const onNodeClick = useCallback((_: unknown, node: Node) => {
     if (isBoundaryNode(node)) return;
     const element = (node.data as { element?: C4Element }).element;
     if (!element) return;
     setSelectedRelationship(null);
     setSelectedElement(element);
-  }
+  }, []);
 
-  function onEdgeClick(_: unknown, edge: Edge) {
+  const onEdgeClick = useCallback((_: unknown, edge: Edge) => {
     const relationship = (edge.data as { relationship?: C4Relationship } | undefined)?.relationship;
     if (!relationship) return;
     setSelectedElement(null);
     setSelectedRelationship(relationship);
-  }
+  }, []);
 
-  function clearFocus() {
+  const clearFocus = useCallback(() => {
     setSelectedElement(null);
     setSelectedRelationship(null);
-  }
+  }, []);
 
   return (
     <div className={clsx("grid h-[calc(100vh-73px)] grid-cols-[1fr_360px]", isDenseView && "c4-dense-view")}>
@@ -533,7 +525,7 @@ export function GraphCanvas({
             </label>
             <select
               value={lifecycleFilter}
-              onChange={(event) => setLifecycleFilter(event.target.value as C4Lifecycle | "all")}
+              onChange={(event) => { const v = event.target.value; startTransition(() => setLifecycleFilter(v as C4Lifecycle | "all")); }}
               className="rounded-xl border border-white/10 bg-slate-900/80 px-3 py-2 text-sm text-slate-200 outline-none"
             >
               {lifecycleOptions.map((option) => (
@@ -550,7 +542,7 @@ export function GraphCanvas({
                 <button
                   key={zone}
                   type="button"
-                  onClick={() => setZoneFilter(zone)}
+                  onClick={() => startTransition(() => setZoneFilter(zone))}
                   className={clsx(
                     "whitespace-nowrap rounded-xl px-3 py-1.5 text-xs font-semibold transition",
                     zoneFilter === zone
@@ -568,7 +560,7 @@ export function GraphCanvas({
             </div>
             <select
               value={flowFilter}
-              onChange={(event) => setFlowFilter(event.target.value as FlowFilter)}
+              onChange={(event) => { const v = event.target.value; startTransition(() => setFlowFilter(v as FlowFilter)); }}
               className="rounded-xl border border-white/10 bg-slate-900/80 px-3 py-2 text-sm text-slate-200 outline-none"
             >
               {flowOptions.map((option) => (
