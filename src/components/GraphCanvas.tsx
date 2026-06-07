@@ -240,11 +240,13 @@ export function GraphCanvas({
   view,
   allViews = [view],
   loadSource = "live",
+  loadError,
   generatedAt,
 }: {
   view: C4View;
   allViews?: C4View[];
   loadSource?: "live" | "fixture";
+  loadError?: string;
   generatedAt?: string;
 }) {
   const { nodes, edges } = useMemo(() => toFlow(view), [view]);
@@ -464,6 +466,12 @@ export function GraphCanvas({
           <p className="mt-1 text-xs text-slate-500">
             Clic sur un élément = focus stable sur ses flux. Clic dans le vide = reset.
           </p>
+          {loadSource === "fixture" ? (
+            <p className="mt-2 rounded-xl border border-amber-400/30 bg-amber-400/10 px-3 py-2 text-xs text-amber-100">
+              ⚠ Backend live injoignable — données d&apos;exemple affichées. Le graphe réel réapparaît dès que <code className="text-amber-200">c4.home/api</code> répond.
+              {loadError ? <span className="mt-1 block text-amber-200/70">{loadError}</span> : null}
+            </p>
+          ) : null}
           {isDenseView ? (
             <p className="mt-2 rounded-xl border border-amber-400/15 bg-amber-400/10 px-3 py-2 text-xs text-amber-100">
               Dense mode actif: routing en angles, animations coupées, effets visuels allégés.

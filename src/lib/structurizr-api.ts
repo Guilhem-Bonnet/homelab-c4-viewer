@@ -21,8 +21,18 @@ export type C4ModelLoadResult = {
   error?: string;
 };
 
+async function fetchWithTimeout(input: string, timeoutMs: number): Promise<Response> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch(input, { cache: "no-store", signal: controller.signal });
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 async function loadMetadata(): Promise<C4MetadataBundle | undefined> {
-  const response = await fetch(METADATA_ENDPOINT, { cache: "no-store" });
+  const response = await fetchWithTimeout(METADATA_ENDPOINT, 6000);
   if (!response.ok) return undefined;
   return parseC4Metadata(await response.json());
 }
@@ -44,7 +54,7 @@ export async function loadC4ModelWithStatus(): Promise<C4ModelLoadResult> {
 
   try {
     const [response, metadata] = await Promise.all([
-      fetch(WORKSPACE_ENDPOINT, { cache: "no-store" }),
+      fetchWithTimeout(WORKSPACE_ENDPOINT, 8000),
       loadMetadata().catch(() => undefined),
     ]);
     if (!response.ok) throw new Error(`Workspace fetch failed: ${response.status}`);

@@ -38,6 +38,7 @@ export default function ViewPage() {
         view={view}
         allViews={loadResult.model.views}
         loadSource={loadResult.source}
+        loadError={loadResult.error}
         generatedAt={loadResult.model.metadata?.generatedAt}
       />
     </AppShell>
